@@ -1,0 +1,1 @@
+ZMQWebSocketBridge using zmq_port="55106" and websocket_port="7007"
