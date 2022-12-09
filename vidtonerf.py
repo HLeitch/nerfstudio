@@ -53,5 +53,5 @@ if __name__ == "__main__":
         os.system(f"ns-eval --load-config {directory}\\{method}\\{timestamp}\\config.yml --output-path {directory}")
         print("Evaluation Finished")
         os.system(
-            f"ns-render --load-config {directory}\\{method}\\{timestamp}\\config.yml --traj filename --camera-path-filename C:\\Users\\hleit\\Documents\\nerfstudio\\CamPath\\DecayCamPath.json --seconds 15"
+            f"ns-render --load-config {directory}\\{method}\\{timestamp}\\config.yml --traj filename --camera-path-filename C:\\Users\\hleit\\Documents\\nerfstudio\\CamPath\\DecayCamPath.json --seconds 15 --output-path {directory}\\{method}\\{timestamp}.mp4"
         )
