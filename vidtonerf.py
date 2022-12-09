@@ -36,7 +36,7 @@ if __name__ == "__main__":
         directory = os.path.dirname(video)
         if "colmap" not in os.listdir(directory):
             os.system(
-                f"ns-process-data video --data {video} --output-dir {directory} --matching-method sequential --verbose --num-frames-target 150"
+                f"ns-process-data video --data {video} --output-dir {directory} --matching-method sequential --verbose --num-frames-target 300"
             )
 
     for video in videoFiles:
