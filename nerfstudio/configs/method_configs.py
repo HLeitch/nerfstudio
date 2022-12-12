@@ -61,6 +61,9 @@ from nerfstudio.pipelines.dynamic_batch import DynamicBatchPipelineConfig
 from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
 
 method_configs: Dict[str, TrainerConfig] = {}
+from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
+
+method_configs: Dict[str, Config] = {}
 descriptions = {
     "nerfacto": "Recommended real-time model tuned for real captures. This model will be continually updated.",
     "depth-nerfacto": "Nerfacto with depth supervision.",
@@ -351,6 +354,7 @@ method_configs["hleitchnerf"] = Config(
             ),
         ),
         model=hleitchnerfModelConfig(eval_num_rays_per_chunk=1 << 15),
+<<<<<<< refs/remotes/origin/main
     ),
     optimizers={
         "proposal_networks": {
@@ -382,6 +386,8 @@ method_configs["nerfplayer-nerfacto"] = TrainerConfig(
             ),
         ),
         model=NerfplayerNerfactoModelConfig(eval_num_rays_per_chunk=1 << 15),
+=======
+>>>>>>> All techniques seem broken
     ),
     optimizers={
         "proposal_networks": {
