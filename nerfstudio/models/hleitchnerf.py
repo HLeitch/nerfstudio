@@ -299,10 +299,14 @@ class hleitchnerfModel(Model):
                 )
 
                 # ground truth supervision for normals
-                loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
-                    outputs["rendered_pred_normal_loss"]
-                )
-        return loss_dict
+
+                ##no ground truth supervision for normals  Nice one somehow managed to change the only thing that doesnt matter... 
+                loss_dict["pred_normal_loss"] = 0
+
+        #        loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
+        #            outputs["rendered_pred_normal_loss"]
+        #        )
+        #return loss_dict
 
     def get_image_metrics_and_images(
         self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
