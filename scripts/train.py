@@ -245,6 +245,7 @@ def entrypoint():
     """Entrypoint for use with pyproject scripts."""
     # Choose a base configuration and override values.
     tyro.extras.set_accent_color("bright_yellow")
+    print("train has been entered")
     main(
         tyro.cli(
             AnnotatedBaseConfigUnion,
