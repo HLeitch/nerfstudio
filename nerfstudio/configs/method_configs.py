@@ -58,9 +58,15 @@ from nerfstudio.models.vanilla_nerf import NeRFModel, VanillaModelConfig
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.pipelines.dynamic_batch import DynamicBatchPipelineConfig
 
+<<<<<<< refs/remotes/origin/main
 from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
 
 method_configs: Dict[str, TrainerConfig] = {}
+=======
+
+method_configs: Dict[str, TrainerConfig] = {}
+
+>>>>>>> Commit to retrieve from stash
 from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
 
 method_configs: Dict[str, Config] = {}
