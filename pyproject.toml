@@ -4,11 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nerfstudio"
-<<<<<<< 99ab8bd669a590efcbce0ff27727b16e0403d71d
 version = "0.1.14"
-=======
-version = "0.1.13"
->>>>>>> v0.1.13 (#1107)
 description = "All-in-one repository for state-of-the-art NeRFs"
 readme = "README.md"
 license = { text="Apache 2.0"}

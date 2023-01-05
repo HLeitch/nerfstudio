@@ -55,7 +55,10 @@ from nerfstudio.models.vanilla_nerf import NeRFModel, VanillaModelConfig
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.pipelines.dynamic_batch import DynamicBatchPipelineConfig
 
+<<<<<<< HEAD
 method_configs: Dict[str, TrainerConfig] = {}
+=======
+>>>>>>> hleitchnerf
 from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
 
 method_configs: Dict[str, Config] = {}
