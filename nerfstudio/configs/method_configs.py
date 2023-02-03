@@ -58,6 +58,7 @@ from nerfstudio.models.vanilla_nerf import NeRFModel, VanillaModelConfig
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.pipelines.dynamic_batch import DynamicBatchPipelineConfig
 
+<<<<<<< HEAD
 <<<<<<< refs/remotes/origin/main
 from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
 
@@ -67,6 +68,12 @@ method_configs: Dict[str, TrainerConfig] = {}
 method_configs: Dict[str, TrainerConfig] = {}
 
 >>>>>>> Commit to retrieve from stash
+=======
+<<<<<<< HEAD
+method_configs: Dict[str, TrainerConfig] = {}
+=======
+>>>>>>> hleitchnerf
+>>>>>>> hleitchnerf
 from nerfstudio.models.hleitchnerf import hleitchnerfModelConfig 
 
 method_configs: Dict[str, Config] = {}
@@ -82,8 +89,11 @@ descriptions = {
     "dnerf": "Dynamic-NeRF model. (slow)",
     "phototourism": "Uses the Phototourism data.",
     "hleitchnerf": "Experimental changes to nerfacto. P.S. you probably have the wrong repo"
+<<<<<<< HEAD
     "nerfplayer-nerfacto": "NeRFPlayer with nerfacto backbone.",
     "nerfplayer-ngp": "NeRFPlayer with InstantNGP backbone.",
+=======
+>>>>>>> hleitchnerf
 }
 
 method_configs["nerfacto"] = TrainerConfig(
@@ -346,6 +356,7 @@ method_configs["hleitchnerf"] = Config(
     trainer=TrainerConfig(
         steps_per_eval_batch=500, steps_per_save=2000, max_num_iterations=30000, mixed_precision=True
     ),
+<<<<<<< HEAD
 <<<<<<< refs/remotes/origin/main
 <<<<<<< refs/remotes/origin/main
     pipeline=VanillaPipelineConfig(        
@@ -355,6 +366,9 @@ method_configs["hleitchnerf"] = Config(
 =======
     pipeline=VanillaPipelineConfig(        
 >>>>>>> fixed and Hleitchnerf reset
+=======
+    pipeline=VanillaPipelineConfig(        
+>>>>>>> hleitchnerf
             datamanager=VanillaDataManagerConfig(
             dataparser=NerfstudioDataParserConfig(),
             train_num_rays_per_batch=4096,
@@ -364,6 +378,7 @@ method_configs["hleitchnerf"] = Config(
             ),
         ),
         model=hleitchnerfModelConfig(eval_num_rays_per_chunk=1 << 15),
+<<<<<<< HEAD
 <<<<<<< refs/remotes/origin/main
     ),
     optimizers={
@@ -398,6 +413,8 @@ method_configs["nerfplayer-nerfacto"] = TrainerConfig(
         model=NerfplayerNerfactoModelConfig(eval_num_rays_per_chunk=1 << 15),
 =======
 >>>>>>> All techniques seem broken
+=======
+>>>>>>> hleitchnerf
     ),
     optimizers={
         "proposal_networks": {
@@ -412,6 +429,7 @@ method_configs["nerfplayer-nerfacto"] = TrainerConfig(
     viewer=ViewerConfig(num_rays_per_chunk=1 << 15),
     vis="viewer",
 )
+<<<<<<< HEAD
 
 method_configs["nerfplayer-ngp"] = TrainerConfig(
     method_name="nerfplayer-ngp",
@@ -438,6 +456,8 @@ method_configs["nerfplayer-ngp"] = TrainerConfig(
     viewer=ViewerConfig(num_rays_per_chunk=64000),
     vis="viewer",
 )
+=======
+>>>>>>> hleitchnerf
 
 AnnotatedBaseConfigUnion = tyro.conf.SuppressFixed[  # Don't show unparseable (fixed) arguments in helptext.
     tyro.conf.FlagConversionOff[
