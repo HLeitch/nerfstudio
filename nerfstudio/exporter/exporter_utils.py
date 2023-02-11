@@ -42,6 +42,9 @@ from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.data.datasets.base_dataset import InputDataset
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.rich_utils import ItersPerSecColumn
+from nerfstudio.field_components.field_heads import FieldHeadNames
+
+
 
 CONSOLE = Console(width=120)
 
@@ -202,6 +205,264 @@ def generate_point_cloud(
         pcd.normals = o3d.utility.Vector3dVector(normals.float().cpu().numpy())
 
     return pcd
+
+
+
+
+def generate_marching_cubes(
+    pipeline: Pipeline,
+    num_points: int = 1000000,
+    remove_outliers: bool = True,
+    estimate_normals: bool = False,
+    rgb_output_name: str = "rgb",
+    depth_output_name: str = "depth",
+    normal_output_name: Optional[str] = None,
+    use_bounding_box: bool = True,
+    bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
+    bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    std_ratio: float = 10.0,
+) -> o3d.geometry.PointCloud:
+    """Generate a marching cubes mesh from a nerf.
+
+    Args:
+        pipeline: Pipeline to evaluate with.
+        num_points: Number of points to generate. May result in less if outlier removal is used.
+        remove_outliers: Whether to remove outliers.
+        estimate_normals: Whether to estimate normals.
+        rgb_output_name: Name of the RGB output.
+        depth_output_name: Name of the depth output.
+        normal_output_name: Name of the normal output.
+        use_bounding_box: Whether to use a bounding box to sample points.
+        bounding_box_min: Minimum of the bounding box.
+        bounding_box_max: Maximum of the bounding box.
+        std_ratio: Threshold based on STD of the average distances across the point cloud to remove outliers.
+
+    Returns:
+        Point cloud.
+    """
+
+    # pylint: disable=too-many-statements
+
+    progress = Progress(
+        TextColumn(":cloud: Computing Point Cloud :cloud:"),
+        BarColumn(),
+        TaskProgressColumn(show_speed=True),
+        TimeRemainingColumn(elapsed_when_finished=True, compact=True),
+    )
+    points = []
+    rgbs = []
+    normals = []
+    # with progress as progress_bar:
+    #     task = progress_bar.add_task("Generating Point Cloud", total=num_points)
+    #     while not progress_bar.finished:
+        
+    #         ##outputs densities. From the field component. Typical input is a location and viewing direction (ray_bundle))
+    #         with torch.no_grad():
+    #             ray_bundle, _ = pipeline.datamanager.next_train(0)
+    #             outputs = pipeline.model(ray_bundle)
+
+    #             densities = outputs["accumulation"]
+    #             CONSOLE.print(f"Density count : {densities.numel()} ")
+
+            
+    #         if rgb_output_name not in outputs:
+    #             CONSOLE.rule("Error", style="red")
+    #             CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")
+    #             CONSOLE.print(f"Please set --rgb_output_name to one of: {outputs.keys()}", justify="center")
+    #             sys.exit(1)
+    #         if depth_output_name not in outputs:
+    #             CONSOLE.rule("Error", style="red")
+    #             CONSOLE.print(f"Could not find {depth_output_name} in the model outputs", justify="center")
+    #             CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+    #             sys.exit(1)
+    #         rgb = outputs[rgb_output_name]
+    #         depth = outputs[depth_output_name]
+    #         if normal_output_name is not None:
+    #             if normal_output_name not in outputs:
+    #                 CONSOLE.rule("Error", style="red")
+    #                 CONSOLE.print(f"Could not find {normal_output_name} in the model outputs", justify="center")
+    #                 CONSOLE.print(f"Please set --normal_output_name to one of: {outputs.keys()}", justify="center")
+    #                 sys.exit(1)
+    #             normal = outputs[normal_output_name]
+    #         point = ray_bundle.origins + ray_bundle.directions * depth
+
+    #         if use_bounding_box:
+    #             comp_l = torch.tensor(bounding_box_min, device=point.device)
+    #             comp_m = torch.tensor(bounding_box_max, device=point.device)
+    #             assert torch.all(
+    #                 comp_l < comp_m
+    #             ), f"Bounding box min {bounding_box_min} must be smaller than max {bounding_box_max}"
+    #             mask = torch.all(torch.concat([point > comp_l, point < comp_m], dim=-1), dim=-1)
+    #             point = point[mask]
+    #             rgb = rgb[mask]
+    #             if normal_output_name is not None:
+    #                 normal = normal[mask]
+
+    #         points.append(point)
+    #         rgbs.append(rgb)
+    #         if normal_output_name is not None:
+    #             normals.append(normal)
+    #         progress.advance(task, point.shape[0])
+    # points = torch.cat(points, dim=0)
+    # rgbs = torch.cat(rgbs, dim=0)
+
+    # pcd = o3d.geometry.PointCloud()
+    # pcd.points = o3d.utility.Vector3dVector(points.float().cpu().numpy())
+    # pcd.colors = o3d.utility.Vector3dVector(rgbs.float().cpu().numpy())
+
+    # ind = None
+    # if remove_outliers:
+    #     CONSOLE.print("Cleaning Point Cloud")
+    #     pcd, ind = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=std_ratio)
+    #     print("\033[A\033[A")
+    #     CONSOLE.print("[bold green]:white_check_mark: Cleaning Point Cloud")
+
+    # # either estimate_normals or normal_output_name, not both
+    # if estimate_normals:
+    #     if normal_output_name is not None:
+    #         CONSOLE.rule("Error", style="red")
+    #         CONSOLE.print("Cannot estimate normals and use normal_output_name at the same time", justify="center")
+    #         sys.exit(1)
+    #     CONSOLE.print("Estimating Point Cloud Normals")
+    #     pcd.estimate_normals()
+    #     print("\033[A\033[A")
+    #     CONSOLE.print("[bold green]:white_check_mark: Estimating Point Cloud Normals")
+    # elif normal_output_name is not None:
+    #     normals = torch.cat(normals, dim=0)
+    #     if ind is not None:
+    #         # mask out normals for points that were removed with remove_outliers
+    #         normals = normals[ind]
+    #     pcd.normals = o3d.utility.Vector3dVector(normals.float().cpu().numpy())
+
+    # return pcd
+
+
+    ##outputs densities. From the field component. Typical input is a location and viewing direction (ray_bundle))
+   ## with torch.no_grad():
+        ##ray_bundle, _ = pipeline.datamanager.next_train(0)
+        ##outputs = pipeline.model(ray_bundle)
+
+        ##outputs = pipeline.model.field.forward(ray_bundle)
+        ##densities = outputs[FieldHeadNames.DENSITY]
+
+
+
+    
+    with progress as progress_bar:
+        task = progress_bar.add_task("Generating Point Cloud", total=num_points)
+        while not progress_bar.finished:
+            with torch.no_grad():
+                ray_bundle, _ = pipeline.datamanager.next_train(0)
+                outputs = pipeline.model(ray_bundle)
+            if rgb_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --rgb_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            rgb = outputs[rgb_output_name]
+            depth = outputs[depth_output_name]
+            if normal_output_name is not None:
+                if normal_output_name not in outputs:
+                    CONSOLE.rule("Error", style="red")
+                    CONSOLE.print(f"Could not find {normal_output_name} in the model outputs", justify="center")
+                    CONSOLE.print(f"Please set --normal_output_name to one of: {outputs.keys()}", justify="center")
+                    sys.exit(1)
+                normal = outputs[normal_output_name]
+            point = ray_bundle.origins + ray_bundle.directions * depth
+
+            if use_bounding_box:
+                comp_l = torch.tensor(bounding_box_min, device=point.device)
+                comp_m = torch.tensor(bounding_box_max, device=point.device)
+                assert torch.all(
+                    comp_l < comp_m
+                ), f"Bounding box min {bounding_box_min} must be smaller than max {bounding_box_max}"
+                mask = torch.all(torch.concat([point > comp_l, point < comp_m], dim=-1), dim=-1)
+                point = point[mask]
+                rgb = rgb[mask]
+                if normal_output_name is not None:
+                    normal = normal[mask]
+
+            points.append(point)
+            rgbs.append(rgb)
+            if normal_output_name is not None:
+                normals.append(normal)
+            progress.advance(task, point.shape[0])
+    points = torch.cat(points, dim=0)
+    rgbs = torch.cat(rgbs, dim=0)
+
+    pointFreq = 0.01
+    ##Iterate over all 3 dimensions to create lots of points. Then sample the density at each and to give the density at equally sampled locations
+    xaxis = np.arange(bounding_box_min[0],bounding_box_max[0],pointFreq)
+    yaxis = np.arange(bounding_box_min[1],bounding_box_max[1],pointFreq)
+    zaxis = np.arange(bounding_box_min[2],bounding_box_max[2],pointFreq)
+
+    xVals,yVals,zVals = np.meshgrid(xaxis,yaxis,zaxis)
+
+
+    pointCoords = []
+    # k = 0
+    # while k < (bounding_box_max[2]-bounding_box_min[2])/pointFreq:
+    #     j=0
+    #     while j < (bounding_box_max[1]-bounding_box_min[1])/pointFreq:
+    #         i=0
+    #         while i < (bounding_box_max[0]-bounding_box_min[0])/pointFreq:
+    #             pointCoords.append(tuple(xvalsi,j,k))
+    #             i+=1
+    #         j+=1
+    #     k+=1
+
+    for x,y,z in zip(xVals,yVals,zVals):
+        pointCoords.append(tuple((x,y,z)))
+    
+    print(np.shape(pointCoords))
+
+
+    pointTens = torch.tensor(pointCoords).cuda()
+    print(np.shape(pointTens))
+
+    TensorType["bs":..., 3] = pointTens
+
+
+    densities = pipeline.model.field.density_fn(pointTens)
+
+    print("Num densities = " + str(densities.numel()))
+
+    #marchingcubes needs a 3d numpy array. 
+    # To work out the dimensions of the cube needed, find the dims, then get unit dims and multiply by densities.numel
+    bounding_box_truesize = tuple(map(lambda i, j: i-j, bounding_box_max, bounding_box_min))
+    sum_bb_dims = sum(bounding_box_truesize)
+    bounding_box_unitsize = tuple(map(lambda i: i/sum_bb_dims ,bounding_box_truesize ))
+
+    xaxis,yaxis,zaxis = bounding_box_unitsize
+
+    dimension_const_cubed = densities.numel()/(xaxis*yaxis*zaxis)
+
+    dimension_const = dimension_const_cubed**(1.0/3.0)
+
+    density_array_dims = tuple(map(lambda i: i * dimension_const, bounding_box_unitsize))
+
+    print(density_array_dims)
+
+    dimX, dimY, dimZ = density_array_dims
+    
+    int_dens_array_dims = (int(dimX +1),int(dimY+1),int(dimZ+1))
+
+    cpuDensity = densities.cpu().detach().numpy()
+
+    print (np.shape(cpuDensity))
+
+    mc_density = np.reshape(cpuDensity, int_dens_array_dims,)
+
+
+    print(np.shape(mc_density))
+    return mc_density
+
+
 
 
 def render_trajectory(

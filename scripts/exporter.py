@@ -18,12 +18,15 @@ import tyro
 from rich.console import Console
 from typing_extensions import Annotated, Literal
 
+import skimage.measure
+
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.exporter import texture_utils, tsdf_utils
 from nerfstudio.exporter.exporter_utils import (
     collect_camera_poses,
     generate_point_cloud,
     get_mesh_from_filename,
+    generate_marching_cubes,
 )
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.eval_utils import eval_setup
@@ -312,6 +315,8 @@ class ExportMarchingCubesMesh(Exporter):
     Export a mesh using marching cubes.
     """
 
+    CONSOLE.print("Marching Cubes STARTED",highlight=True)
+
     num_points: int = 1000000
     """Number of points to generate. May result in less if outlier removal is used."""
     remove_outliers: bool = True
@@ -372,6 +377,9 @@ class ExportMarchingCubesMesh(Exporter):
                 CONSOLE.print("[bold yellow]Exiting early.")
                 sys.exit(1)
 
+
+
+
     def main(self) -> None:
         """Export mesh"""
 
@@ -379,6 +387,8 @@ class ExportMarchingCubesMesh(Exporter):
             self.output_dir.mkdir(parents=True)
 
         _, pipeline, _ = eval_setup(self.load_config)
+
+
         self.validate_pipeline(pipeline)
 
         # Increase the batchsize to speed up the evaluation.
@@ -387,7 +397,7 @@ class ExportMarchingCubesMesh(Exporter):
         # Whether the normals should be estimated based on the point cloud.
         estimate_normals = self.normal_method == "open3d"
 
-        pcd = generate_point_cloud(
+        densities = generate_marching_cubes(
             pipeline=pipeline,
             num_points=self.num_points,
             remove_outliers=self.remove_outliers,
@@ -400,47 +410,46 @@ class ExportMarchingCubesMesh(Exporter):
             bounding_box_max=self.bounding_box_max,
             std_ratio=self.std_ratio,
         )
-        torch.cuda.empty_cache()
-        CONSOLE.print(f"[bold green]:white_check_mark: Generated {pcd}")
 
-        if self.save_point_cloud:
-            CONSOLE.print("Saving Point Cloud...")
-            o3d.io.write_point_cloud(str(self.output_dir / "point_cloud.ply"), pcd)
-            print("\033[A\033[A")
-            CONSOLE.print("[bold green]:white_check_mark: Saving Point Cloud")
+        
 
-        CONSOLE.print("Computing Mesh... this may take a while.")
-        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=9)
-        vertices_to_remove = densities < np.quantile(densities, 0.1)
-        mesh.remove_vertices_by_mask(vertices_to_remove)
-        print("\033[A\033[A")
-        CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
 
-        CONSOLE.print("Saving Mesh...")
-        o3d.io.write_triangle_mesh(str(self.output_dir / "poisson_mesh.ply"), mesh)
-        print("\033[A\033[A")
-        CONSOLE.print("[bold green]:white_check_mark: Saving Mesh")
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-        # This will texture the mesh with NeRF and export to a mesh.obj file
-        # and a material and texture file
-        if self.texture_method == "nerf":
-            # load the mesh from the poisson reconstruction
-            mesh = get_mesh_from_filename(
-                str(self.output_dir / "poisson_mesh.ply"), target_num_faces=self.target_num_faces
-            )
-            CONSOLE.print("Texturing mesh with NeRF")
-            texture_utils.export_textured_mesh(
-                mesh,
-                pipeline,
-                self.output_dir,
-                px_per_uv_triangle=self.px_per_uv_triangle if self.unwrap_method == "custom" else None,
-                unwrap_method=self.unwrap_method,
-                num_pixels_per_side=self.num_pixels_per_side,
-            )
+        from skimage import measure
+        from skimage.draw import ellipsoid
 
-    def main(self) -> None:
-        """Export mesh"""
-        raise NotImplementedError("Marching cubes not implemented yet.")
+
+        # # Generate a level set about zero of two identical ellipsoids in 3D
+        # ellip_base = ellipsoid(6, 10, 16, levelset=True)
+        # ellip_double = np.concatenate((ellip_base[:-1, ...],
+        #                        ellip_base[2:, ...]), axis=0)
+
+        ##Produce marching cube representation
+        verts, faces, normals, values = skimage.measure.marching_cubes(densities, allow_degenerate=False,spacing=(0.1,.1,0.1))
+
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Fancy indexing: `verts[faces]` to generate a collection of triangles
+        mesh = Poly3DCollection(verts[faces])
+        mesh.set_edgecolor('k')
+        ax.add_collection3d(mesh)
+
+        ax.set_xlabel("x-axis: a = 6 per ellipsoid")
+        ax.set_ylabel("y-axis: b = 10")
+        ax.set_zlabel("z-axis: c = 16")
+
+        ax.set_xlim(0, 32)  # a = 6 (times two for 2nd ellipsoid)
+        ax.set_ylim(0, 32)  # b = 10
+        ax.set_zlim(0, 32)  # c = 16
+
+        plt.tight_layout()
+        plt.show()
+
+
 
 
 @dataclass
