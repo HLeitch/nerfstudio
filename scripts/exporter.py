@@ -313,23 +313,22 @@ class ExportMarchingCubesMesh(Exporter):
     """
     NOT YET IMPLEMENTED
     Export a mesh using marching cubes.
+    EXAMPLE: ns-export marching-cubes --load-config [config path]] --output-dir exports/mesh/ --use-bounding-box True --bounding-box-min -0.25 -0.25 -0.25 --bounding-box-max 0.25 0.25 0.25 --num-samples=100 --save_mesh True
     """
 
     CONSOLE.print("Marching Cubes STARTED",highlight=True)
 
-    num_points: int = 1000000
-    """Number of points to generate. May result in less if outlier removal is used."""
+    num_samples: int = 100
+    """Number of points to sample per axis. May result in less if outlier removal is used."""
     remove_outliers: bool = True
     """Remove outliers from the point cloud."""
     depth_output_name: str = "depth"
     """Name of the depth output."""
-    rgb_output_name: str = "rgb"
-    """Name of the RGB output."""
     normal_method: Literal["open3d", "model_output"] = "model_output"
     """Method to estimate normals with."""
     normal_output_name: str = "normals"
     """Name of the normal output."""
-    save_point_cloud: bool = False
+    save_mesh: bool = True
     """Whether to save the point cloud."""
     use_bounding_box: bool = True
     """Only query points within the bounding box"""
@@ -341,45 +340,9 @@ class ExportMarchingCubesMesh(Exporter):
     """Number of rays to evaluate per batch. Decrease if you run out of memory."""
     texture_method: Literal["point_cloud", "nerf"] = "nerf"
     """Method to texture the mesh with. Either 'point_cloud' or 'nerf'."""
-    px_per_uv_triangle: int = 4
-    """Number of pixels per UV triangle."""
-    unwrap_method: Literal["xatlas", "custom"] = "xatlas"
-    """The method to use for unwrapping the mesh."""
-    num_pixels_per_side: int = 2048
-    """If using xatlas for unwrapping, the pixels per side of the texture image."""
-    target_num_faces: Optional[int] = 50000
-    """Target number of faces for the mesh to texture."""
-    std_ratio: float = 10.0
-    """Threshold based on STD of the average distances across the point cloud to remove outliers."""
 
     def validate_pipeline(self, pipeline: Pipeline) -> None:
         """Check that the pipeline is valid for this exporter."""
-        if self.normal_method == "model_output":
-            CONSOLE.print("Checking that the pipeline has a normal output.")
-            origins = torch.zeros((1, 3), device=pipeline.device)
-            directions = torch.ones_like(origins)
-            pixel_area = torch.ones_like(origins[..., :1])
-            camera_indices = torch.zeros_like(origins[..., :1])
-            ray_bundle = RayBundle(
-                origins=origins, directions=directions, pixel_area=pixel_area, camera_indices=camera_indices
-            )
-            outputs = pipeline.model(ray_bundle)
-            if self.normal_output_name not in outputs:
-                CONSOLE.print(
-                    f"[bold yellow]Warning: Normal output '{self.normal_output_name}' not found in pipeline outputs."
-                )
-                CONSOLE.print(f"Available outputs: {list(outputs.keys())}")
-                CONSOLE.print(
-                    "[bold yellow]Warning: Please train a model with normals "
-                    "(e.g., nerfacto with predicted normals turned on)."
-                )
-                CONSOLE.print("[bold yellow]Warning: Or change --normal-method")
-                CONSOLE.print("[bold yellow]Exiting early.")
-                sys.exit(1)
-
-
-
-
     def main(self) -> None:
         """Export mesh"""
 
@@ -394,61 +357,52 @@ class ExportMarchingCubesMesh(Exporter):
         # Increase the batchsize to speed up the evaluation.
         pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
 
-        # Whether the normals should be estimated based on the point cloud.
-        estimate_normals = self.normal_method == "open3d"
-
         densities = generate_marching_cubes(
             pipeline=pipeline,
-            num_points=self.num_points,
+            num_samples=self.num_samples,
             remove_outliers=self.remove_outliers,
-            estimate_normals=estimate_normals,
-            rgb_output_name=self.rgb_output_name,
             depth_output_name=self.depth_output_name,
-            normal_output_name=self.normal_output_name if self.normal_method == "model_output" else None,
             use_bounding_box=self.use_bounding_box,
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
-            std_ratio=self.std_ratio,
         )
+        torch.cuda.empty_cache()
 
+        verts, faces, normals, values = skimage.measure.marching_cubes(densities,level=1.0,allow_degenerate=False)
+
+        colours = np.zeros_like(verts)
+
+        CONSOLE.print(f"[bold green]:white_check_mark: Generated Marching Cube representation!!")
         
 
+        import pywavefront as pwf
+        if self.save_mesh:  
+            CONSOLE.print(f"[yellow]Saving mesh")
 
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+            device = o3d.core.Device("CPU:0")
+            mesh = o3d.t.geometry.TriangleMesh() 
 
-        from skimage import measure
-        from skimage.draw import ellipsoid
+            mesh.vertex.positions = verts
+            mesh.triangle.indices = faces
+            mesh.vertex.normals = normals
+            mesh.vertex.colours = colours
 
+            ##Other programs read from 1. Python indexes from 0
+            facesReindex = faces +1
+            
+            ######Manually create obj file?########
+            thefile = open(self.output_dir.__str__()+"/test.obj", 'w')
+            for item in verts:
+                thefile.write("v {0} {1} {2}\n".format(item[0],item[1],item[2]))
 
-        # # Generate a level set about zero of two identical ellipsoids in 3D
-        # ellip_base = ellipsoid(6, 10, 16, levelset=True)
-        # ellip_double = np.concatenate((ellip_base[:-1, ...],
-        #                        ellip_base[2:, ...]), axis=0)
+            for item in normals:
+                thefile.write("vn {0} {1} {2}\n".format(item[0],item[1],item[2]))
 
-        ##Produce marching cube representation
-        verts, faces, normals, values = skimage.measure.marching_cubes(densities, allow_degenerate=False,spacing=(0.1,.1,0.1))
+            for item in facesReindex:
+                thefile.write("f {0} {1} {2}\n".format(item[0],item[1],item[2]))  
 
-        fig = plt.figure(figsize=(10, 10))
-        ax = fig.add_subplot(111, projection='3d')
-
-        # Fancy indexing: `verts[faces]` to generate a collection of triangles
-        mesh = Poly3DCollection(verts[faces])
-        mesh.set_edgecolor('k')
-        ax.add_collection3d(mesh)
-
-        ax.set_xlabel("x-axis: a = 6 per ellipsoid")
-        ax.set_ylabel("y-axis: b = 10")
-        ax.set_zlabel("z-axis: c = 16")
-
-        ax.set_xlim(0, 32)  # a = 6 (times two for 2nd ellipsoid)
-        ax.set_ylim(0, 32)  # b = 10
-        ax.set_zlim(0, 32)  # c = 16
-
-        plt.tight_layout()
-        plt.show()
-
+            thefile.close()
+            ######################################
 
 
 
