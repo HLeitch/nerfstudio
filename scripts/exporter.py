@@ -320,6 +320,8 @@ class ExportMarchingCubesMesh(Exporter):
 
     num_samples: int = 100
     """Number of points to sample per axis. May result in less if outlier removal is used."""
+    mc_level: int = 3.0
+    """Threshold value for surfaces. Affects smoothness and amount of floaters. Higher = fewer floaters, more craters in object"""
     remove_outliers: bool = True
     """Remove outliers from the point cloud."""
     depth_output_name: str = "depth"
@@ -368,7 +370,7 @@ class ExportMarchingCubesMesh(Exporter):
         )
         torch.cuda.empty_cache()
 
-        verts, faces, normals, values = skimage.measure.marching_cubes(densities,level=1.0,allow_degenerate=False)
+        verts, faces, normals, values = skimage.measure.marching_cubes(densities,level=3.0,allow_degenerate=False)
 
         colours = np.zeros_like(verts)
 

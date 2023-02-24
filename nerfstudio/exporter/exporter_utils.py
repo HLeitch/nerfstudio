@@ -416,7 +416,7 @@ def generate_marching_cubes(
 
     dimX, dimY, dimZ = density_array_dims
     
-    int_dens_array_dims = (int(dimX +1),int(dimY+1),int(dimZ+1))
+    int_dens_array_dims = (int(dimX+1),int(dimY+1),int(dimZ+1))
     
     num_samples = int_dens_array_dims[0]*int_dens_array_dims[1]*int_dens_array_dims[2]
 
@@ -430,14 +430,13 @@ def generate_marching_cubes(
     yPointDelta = (bounding_box_max[1] - bounding_box_min[1])/int_dens_array_dims[1]
     zPointDelta = (bounding_box_max[2] - bounding_box_min[2])/int_dens_array_dims[2]
 
-
     k = 0
     while k < int_dens_array_dims[2]:
         j=0
         while j < int_dens_array_dims[1]:
             i=0
             while i < int_dens_array_dims[0]:
-                coord = [(i*xPointDelta)+bounding_box_min[0],(j*yPointDelta)+bounding_box_min[1],(k*zPointDelta)+bounding_box_min[2]]
+                coord = [(i*xPointDelta)+bounding_box_min[0],(k*zPointDelta)+bounding_box_min[2],(j*yPointDelta)+bounding_box_min[1]]
                 ##pointCoords = torch.cat((pointCoords,coord), 0)
                 outputs.append(coord)
                 i+=1
@@ -447,6 +446,7 @@ def generate_marching_cubes(
     pointCoords = torch.tensor(outputs)
     print(f"points in tensor {np.shape(pointCoords)}")
 
+    print(f"pointCoords = {pointCoords}")
 
     pointTens = torch.tensor(pointCoords).cuda()
     print(np.shape(pointTens))
@@ -460,12 +460,13 @@ def generate_marching_cubes(
 
     cpuDensity = densities.cpu().detach().numpy()
 
-    print (np.shape(cpuDensity))
+    print(np.shape(cpuDensity))
 
-    mc_density = np.reshape(cpuDensity, int_dens_array_dims,)
+    mc_density = np.reshape(cpuDensity, int_dens_array_dims)
 
 
     print(np.shape(mc_density))
+    ##print(mc_density)
     return mc_density
 
 
