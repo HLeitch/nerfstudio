@@ -30,6 +30,7 @@ from nerfstudio.exporter.exporter_utils import (
 )
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.eval_utils import eval_setup
+import nerfstudio.exporter.marching_cubes_utils as mcUtils
 
 CONSOLE = Console(width=120)
 
@@ -318,6 +319,7 @@ class ExportMarchingCubesMesh(Exporter):
 
     CONSOLE.print("Marching Cubes STARTED",highlight=True)
 
+
     num_samples: int = 100
     """Number of points to sample per axis. May result in less if outlier removal is used."""
     mc_level: int = 3.0
@@ -332,6 +334,8 @@ class ExportMarchingCubesMesh(Exporter):
     """Name of the normal output."""
     save_mesh: bool = True
     """Whether to save the point cloud."""
+    output_file_name: str = "marching-cubes.obj"
+    """Name of file output is saved to"""
     use_bounding_box: bool = True
     """Only query points within the bounding box"""
     bounding_box_min: Tuple[float, float, float] = (-1, -1, -1)
@@ -370,7 +374,7 @@ class ExportMarchingCubesMesh(Exporter):
         )
         torch.cuda.empty_cache()
 
-        verts, faces, normals, values = skimage.measure.marching_cubes(densities,level=3.0,allow_degenerate=False)
+        verts, faces, normals, values = skimage.measure.marching_cubes(densities,level=self.mc_level,allow_degenerate=False)
 
         colours = np.zeros_like(verts)
 
@@ -380,32 +384,11 @@ class ExportMarchingCubesMesh(Exporter):
         import pywavefront as pwf
         if self.save_mesh:  
             CONSOLE.print(f"[yellow]Saving mesh")
-
-            device = o3d.core.Device("CPU:0")
-            mesh = o3d.t.geometry.TriangleMesh() 
-
-            mesh.vertex.positions = verts
-            mesh.triangle.indices = faces
-            mesh.vertex.normals = normals
-            mesh.vertex.colours = colours
-
+            
             ##Other programs read from 1. Python indexes from 0
             facesReindex = faces +1
-            
-            ######Manually create obj file?########
-            thefile = open(self.output_dir.__str__()+"/test.obj", 'w')
-            for item in verts:
-                thefile.write("v {0} {1} {2}\n".format(item[0],item[1],item[2]))
 
-            for item in normals:
-                thefile.write("vn {0} {1} {2}\n".format(item[0],item[1],item[2]))
-
-            for item in facesReindex:
-                thefile.write("f {0} {1} {2}\n".format(item[0],item[1],item[2]))  
-
-            thefile.close()
-            ######################################
-
+            mcUtils.save_obj(verts,normals,facesReindex,self.output_dir,self.output_file_name)
 
 
 @dataclass

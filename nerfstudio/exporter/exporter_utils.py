@@ -420,7 +420,7 @@ def generate_marching_cubes(
     
     num_samples = int_dens_array_dims[0]*int_dens_array_dims[1]*int_dens_array_dims[2]
 
-    print(f"sampling {num_samples} points per axis")
+    print(f"Sampling {num_samples} points")
     ##Iterate over all 3 dimensions to create lots of points. Then sample the density at each and to give the density at equally sampled locations
 
     pointCoords = torch.tensor(())
@@ -436,17 +436,16 @@ def generate_marching_cubes(
         while j < int_dens_array_dims[1]:
             i=0
             while i < int_dens_array_dims[0]:
-                coord = [(i*xPointDelta)+bounding_box_min[0],(k*zPointDelta)+bounding_box_min[2],(j*yPointDelta)+bounding_box_min[1]]
-                ##pointCoords = torch.cat((pointCoords,coord), 0)
+
+                ##Axis trickery to output in correct axis 
+                coord = [(i*xPointDelta)+bounding_box_min[0],bounding_box_max[2] -(k*zPointDelta),(j*yPointDelta)+bounding_box_min[1]]
+
                 outputs.append(coord)
+                
                 i+=1
             j+=1    
         k+=1
-        print(f"zloop completed {k}")
     pointCoords = torch.tensor(outputs)
-    print(f"points in tensor {np.shape(pointCoords)}")
-
-    print(f"pointCoords = {pointCoords}")
 
     pointTens = torch.tensor(pointCoords).cuda()
     print(np.shape(pointTens))
@@ -454,18 +453,11 @@ def generate_marching_cubes(
 
     densities = pipeline.model.field.density_fn(pointTens)
 
-    print("Num densities = " + str(densities.numel()))
-
-    
-
     cpuDensity = densities.cpu().detach().numpy()
 
-    print(np.shape(cpuDensity))
+    ##order='F' Fortran-Like ordering. Indexes differently, this fixes problems with not square Bounding Boxes
+    mc_density = np.reshape(cpuDensity, int_dens_array_dims,order='F')
 
-    mc_density = np.reshape(cpuDensity, int_dens_array_dims)
-
-
-    print(np.shape(mc_density))
     ##print(mc_density)
     return mc_density
 
