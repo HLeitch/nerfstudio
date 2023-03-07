@@ -35,6 +35,6 @@ def save_obj(
             file.write(f"f {item[0]} {item[1]} {item[2]}\n")
 
         file.close()
-        print(f"[green]Mesh Written to {output_dir.__str__()}\\{file_name}")
+        CONSOLE.print(f"[green]Mesh Written to {output_dir.__str__()}\\{file_name}")
     except RuntimeError:
-        print("[red]Mesh failed to save.")
+        CONSOLE.print("[red]Mesh failed to save.")

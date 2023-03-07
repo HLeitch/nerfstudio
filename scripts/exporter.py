@@ -374,17 +374,14 @@ class ExportMarchingCubesMesh(Exporter):
         )
         torch.cuda.empty_cache()
 
-        verts, faces, normals, values = skimage.measure.marching_cubes(densities,level=self.mc_level,allow_degenerate=False)
+        verts, faces, normals, values = skimage.measure.marching_cubes(densities, level=self.mc_level, allow_degenerate=False)
 
         colours = np.zeros_like(verts)
 
         CONSOLE.print(f"[bold green]:white_check_mark: Generated Marching Cube representation!!")
         
-
         import pywavefront as pwf
         if self.save_mesh:  
-            CONSOLE.print(f"[yellow]Saving mesh")
-            
             ##Other programs read from 1. Python indexes from 0
             facesReindex = faces +1
 
