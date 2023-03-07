@@ -13,24 +13,23 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import open3d as o3d
+import skimage.measure
 import torch
 import tyro
 from rich.console import Console
 from typing_extensions import Annotated, Literal
 
-import skimage.measure
-
+import nerfstudio.exporter.marching_cubes_utils as mcUtils
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.exporter import texture_utils, tsdf_utils
 from nerfstudio.exporter.exporter_utils import (
     collect_camera_poses,
+    generate_marching_cubes,
     generate_point_cloud,
     get_mesh_from_filename,
-    generate_marching_cubes,
 )
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.eval_utils import eval_setup
-import nerfstudio.exporter.marching_cubes_utils as mcUtils
 
 CONSOLE = Console(width=120)
 
@@ -314,15 +313,14 @@ class ExportMarchingCubesMesh(Exporter):
     """
     NOT YET IMPLEMENTED
     Export a mesh using marching cubes.
-    EXAMPLE: ns-export marching-cubes --load-config [config path]] --output-dir exports/mesh/ --use-bounding-box True --bounding-box-min -0.25 -0.25 -0.25 --bounding-box-max 0.25 0.25 0.25 --num-samples=100 --save_mesh True
+    EXAMPLE: ns-export marching-cubes --load-config [config path] --output-dir exports/mc/ --use-bounding-box True --bounding-box-min -0.25 -0.25 -0.25 --bounding-box-max 0.25 0.25 0.25 --num-samples=100 --save_mesh True --output-file-name example.obj
     """
 
-    CONSOLE.print("Marching Cubes STARTED",highlight=True)
-
+    CONSOLE.print("Marching Cubes STARTED", highlight=True)
 
     num_samples: int = 100
     """Number of points to sample per axis. May result in less if outlier removal is used."""
-    mc_level: int = 3.0
+    mc_level: int = int(10)
     """Threshold value for surfaces. Affects smoothness and amount of floaters. Higher = fewer floaters, more craters in object"""
     remove_outliers: bool = True
     """Remove outliers from the point cloud."""
@@ -349,6 +347,7 @@ class ExportMarchingCubesMesh(Exporter):
 
     def validate_pipeline(self, pipeline: Pipeline) -> None:
         """Check that the pipeline is valid for this exporter."""
+
     def main(self) -> None:
         """Export mesh"""
 
@@ -356,7 +355,6 @@ class ExportMarchingCubesMesh(Exporter):
             self.output_dir.mkdir(parents=True)
 
         _, pipeline, _ = eval_setup(self.load_config)
-
 
         self.validate_pipeline(pipeline)
 
@@ -374,18 +372,21 @@ class ExportMarchingCubesMesh(Exporter):
         )
         torch.cuda.empty_cache()
 
-        verts, faces, normals, values = skimage.measure.marching_cubes(densities, level=self.mc_level, allow_degenerate=False)
+        verts, faces, normals, values = skimage.measure.marching_cubes(
+            densities, level=self.mc_level, allow_degenerate=False
+        )
 
         colours = np.zeros_like(verts)
 
         CONSOLE.print(f"[bold green]:white_check_mark: Generated Marching Cube representation!!")
-        
-        import pywavefront as pwf
-        if self.save_mesh:  
-            ##Other programs read from 1. Python indexes from 0
-            facesReindex = faces +1
 
-            mcUtils.save_obj(verts,normals,facesReindex,self.output_dir,self.output_file_name)
+        import pywavefront as pwf
+
+        if self.save_mesh:
+            ##Other programs for model veiwing read from 1. Python indexes from 0
+            facesReindex = faces + 1
+
+            mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
 
 
 @dataclass

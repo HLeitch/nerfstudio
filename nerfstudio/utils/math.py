@@ -179,6 +179,8 @@ def conical_frustum_to_gaussian(
     means = origins + directions * (mu + (2.0 * mu * hw**2.0) / (3.0 * mu**2.0 + hw**2.0))
     dir_variance = (hw**2) / 3 - (4 / 15) * ((hw**4 * (12 * mu**2 - hw**2)) / (3 * mu**2 + hw**2) ** 2)
     radius_variance = radius**2 * ((mu**2) / 4 + (5 / 12) * hw**2 - 4 / 15 * (hw**4) / (3 * mu**2 + hw**2))
+
+    print(f"conical frustrum to gaussian.\n Directions: {directions}\n Means: {means}\n dir_variance: {dir_variance}\n radius_variance{radius_variance}")
     return compute_3d_gaussian(directions, means, dir_variance, radius_variance)
 
 

@@ -22,19 +22,18 @@ def save_obj(
         output_dir,
         file_name
 ):
-    try:
-        CONSOLE.print(f"[yellow]Saving mesh")
 
-        
-        file = open(output_dir.__str__()+"\\" + file_name,'w')
-        for item in verts:
-            file.write(f"v {item[0]} {item[1]} {item[2]}\n")
-        for item in normals:
-            file.write(f"vn {item[0]} {item[1]} {item[2]}\n")
-        for item in faces:
-            file.write(f"f {item[0]} {item[1]} {item[2]}\n")
+    CONSOLE.print(f"[yellow]Saving mesh")
 
-        file.close()
-        CONSOLE.print(f"[green]Mesh Written to {output_dir.__str__()}\\{file_name}")
-    except RuntimeError:
-        CONSOLE.print("[red]Mesh failed to save.")
+    
+    file = open(output_dir.__str__()+"\\" + file_name,'w')
+    for item in verts:
+        file.write(f"v {item[0]} {item[1]} {item[2]}\n")
+    for item in normals:
+        file.write(f"vn {item[0]} {item[1]} {item[2]}\n")
+    for item in faces:
+        file.write(f"f {item[0]} {item[1]} {item[2]}\n")
+
+    file.close()
+    CONSOLE.print(f"[green]Mesh Written to {output_dir.__str__()}\\{file_name}")
+

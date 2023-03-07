@@ -40,11 +40,9 @@ from torchtyping import TensorType
 
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.data.datasets.base_dataset import InputDataset
+from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.rich_utils import ItersPerSecColumn
-from nerfstudio.field_components.field_heads import FieldHeadNames
-
-
 
 CONSOLE = Console(width=120)
 
@@ -207,8 +205,6 @@ def generate_point_cloud(
     return pcd
 
 
-
-
 def generate_marching_cubes(
     pipeline: Pipeline,
     num_samples: int = 100,
@@ -251,7 +247,7 @@ def generate_marching_cubes(
     # with progress as progress_bar:
     #     task = progress_bar.add_task("Generating Point Cloud", total=num_points)
     #     while not progress_bar.finished:
-        
+
     #         ##outputs densities. From the field component. Typical input is a location and viewing direction (ray_bundle))
     #         with torch.no_grad():
     #             ray_bundle, _ = pipeline.datamanager.next_train(0)
@@ -260,7 +256,6 @@ def generate_marching_cubes(
     #             densities = outputs["accumulation"]
     #             CONSOLE.print(f"Density count : {densities.numel()} ")
 
-            
     #         if rgb_output_name not in outputs:
     #             CONSOLE.rule("Error", style="red")
     #             CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")
@@ -332,18 +327,14 @@ def generate_marching_cubes(
 
     # return pcd
 
-
     ##outputs densities. From the field component. Typical input is a location and viewing direction (ray_bundle))
-   ## with torch.no_grad():
-        ##ray_bundle, _ = pipeline.datamanager.next_train(0)
-        ##outputs = pipeline.model(ray_bundle)
+    ## with torch.no_grad():
+    ##ray_bundle, _ = pipeline.datamanager.next_train(0)
+    ##outputs = pipeline.model(ray_bundle)
 
-        ##outputs = pipeline.model.field.forward(ray_bundle)
-        ##densities = outputs[FieldHeadNames.DENSITY]
+    ##outputs = pipeline.model.field.forward(ray_bundle)
+    ##densities = outputs[FieldHeadNames.DENSITY]
 
-
-
-    
     # with progress as progress_bar:
     #     task = progress_bar.add_task("Generating Point Cloud", total=num_points)
     #     while not progress_bar.finished:
@@ -393,32 +384,31 @@ def generate_marching_cubes(
 
     input_num_samples = num_samples
 
-   
-
-    #marchingcubes needs a 3d numpy array. 
+    # marchingcubes needs a 3d numpy array.
     # To work out the dimensions of the cube needed, find the dims, then get unit dims and multiply by densities.numel
-    # Num samples is used as a guide, the number of points is actually calculated by the closest whole number 
+    # Num samples is used as a guide, the number of points is actually calculated by the closest whole number
     # in order to prevent array trouble. e.g. if the bounding box is 125.3 x 125.3 x 125.3 points long, the num of points sampled
     # will be 126 x 126 x 126.
-    bounding_box_truesize = tuple(map(lambda i, j: i-j, bounding_box_max, bounding_box_min))
+    bounding_box_truesize = tuple(map(lambda i, j: i - j, bounding_box_max, bounding_box_min))
     sum_bb_dims = sum(bounding_box_truesize)
-    bounding_box_unitsize = tuple(map(lambda i: i/sum_bb_dims ,bounding_box_truesize ))
+    bounding_box_unitsize = tuple(map(lambda i: i / sum_bb_dims, bounding_box_truesize))
 
-    xaxis,yaxis,zaxis = bounding_box_unitsize
+    ##Axis changed to y-up. Converted dimensions
+    xaxis, zaxis, yaxis = bounding_box_unitsize
 
-    dimension_const_cubed = (num_samples**3) /(xaxis*yaxis*zaxis)
+    dimension_const_cubed = (num_samples**3) / (xaxis * yaxis * zaxis)
 
-    dimension_const = dimension_const_cubed**(1.0/3.0)
+    dimension_const = dimension_const_cubed ** (1.0 / 3.0)
 
     density_array_dims = tuple(map(lambda i: i * dimension_const, bounding_box_unitsize))
 
     print(density_array_dims)
 
-    dimX, dimY, dimZ = density_array_dims
-    
-    int_dens_array_dims = (int(dimX+1),int(dimY+1),int(dimZ+1))
-    
-    num_samples = int_dens_array_dims[0]*int_dens_array_dims[1]*int_dens_array_dims[2]
+    dimX, dimZ, dimY = density_array_dims
+
+    int_dens_array_dims = (int(dimX + 1), int(dimY + 1), int(dimZ + 1))
+
+    num_samples = int_dens_array_dims[0] * int_dens_array_dims[1] * int_dens_array_dims[2]
 
     print(f"Sampling {num_samples} points")
     ##Iterate over all 3 dimensions to create lots of points. Then sample the density at each and to give the density at equally sampled locations
@@ -426,42 +416,46 @@ def generate_marching_cubes(
     pointCoords = torch.tensor(())
     outputs = []
 
-    xPointDelta = (bounding_box_max[0] - bounding_box_min[0])/int_dens_array_dims[0]
-    yPointDelta = (bounding_box_max[1] - bounding_box_min[1])/int_dens_array_dims[1]
-    zPointDelta = (bounding_box_max[2] - bounding_box_min[2])/int_dens_array_dims[2]
+    xPointDelta = (bounding_box_max[0] - bounding_box_min[0]) / int_dens_array_dims[0]
+    yPointDelta = (bounding_box_max[2] - bounding_box_min[2]) / int_dens_array_dims[1]
+    zPointDelta = (bounding_box_max[1] - bounding_box_min[1]) / int_dens_array_dims[2]
 
     k = 0
     while k < int_dens_array_dims[2]:
-        j=0
+        j = 0
         while j < int_dens_array_dims[1]:
-            i=0
+            i = 0
             while i < int_dens_array_dims[0]:
 
-                ##Axis trickery to output in correct axis 
-                coord = [(i*xPointDelta)+bounding_box_min[0],bounding_box_max[2] -(k*zPointDelta),(j*yPointDelta)+bounding_box_min[1]]
+                ##Axis trickery to output in correct axis
+                coord = [
+                    (i * xPointDelta) + bounding_box_min[0],
+                    bounding_box_max[1] - (k * zPointDelta),
+                    (j * yPointDelta) + bounding_box_min[2],
+                ]
 
                 outputs.append(coord)
-                
-                i+=1
-            j+=1    
-        k+=1
+
+                i += 1
+            j += 1
+        k += 1
     pointCoords = torch.tensor(outputs)
 
     pointTens = torch.tensor(pointCoords).cuda()
     print(np.shape(pointTens))
 
-
     densities = pipeline.model.field.density_fn(pointTens)
 
+    print(f"Test Density: {pipeline.model.field.density_fn(pointTens)}")
+
     cpuDensity = densities.cpu().detach().numpy()
+    print(cpuDensity)
 
     ##order='F' Fortran-Like ordering. Indexes differently, this fixes problems with not square Bounding Boxes
-    mc_density = np.reshape(cpuDensity, int_dens_array_dims,order='F')
+    mc_density = np.reshape(cpuDensity, int_dens_array_dims, order="F")
 
     ##print(mc_density)
     return mc_density
-
-
 
 
 def render_trajectory(
