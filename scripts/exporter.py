@@ -13,6 +13,7 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import open3d as o3d
+import open3d.visualization as o3dvis
 import skimage.measure
 import torch
 import tyro
@@ -24,11 +25,12 @@ from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.exporter import texture_utils, tsdf_utils
 from nerfstudio.exporter.exporter_utils import (
     collect_camera_poses,
-    generate_marching_cubes,
+    density_sampler,
     generate_point_cloud,
     get_mesh_from_filename,
 )
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
+from nerfstudio.utils import math as math
 from nerfstudio.utils.eval_utils import eval_setup
 
 CONSOLE = Console(width=120)
@@ -311,7 +313,6 @@ class ExportPoissonMesh(Exporter):
 @dataclass
 class ExportMarchingCubesMesh(Exporter):
     """
-    NOT YET IMPLEMENTED
     Export a mesh using marching cubes.
     EXAMPLE: ns-export marching-cubes --load-config [config path] --output-dir exports/mc/ --use-bounding-box True --bounding-box-min -0.25 -0.25 -0.25 --bounding-box-max 0.25 0.25 0.25 --num-samples=100 --save_mesh True --output-file-name example.obj
     """
@@ -361,7 +362,7 @@ class ExportMarchingCubesMesh(Exporter):
         # Increase the batchsize to speed up the evaluation.
         pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
 
-        densities = generate_marching_cubes(
+        densities = density_sampler(
             pipeline=pipeline,
             num_samples=self.num_samples,
             remove_outliers=self.remove_outliers,
@@ -380,13 +381,133 @@ class ExportMarchingCubesMesh(Exporter):
 
         CONSOLE.print(f"[bold green]:white_check_mark: Generated Marching Cube representation!!")
 
-        import pywavefront as pwf
-
         if self.save_mesh:
             ##Other programs for model veiwing read from 1. Python indexes from 0
             facesReindex = faces + 1
 
             mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
+
+
+@dataclass
+class ExportSamuraiMarchingCubes(Exporter):
+    """
+    Export a mesh using the extraction technique described in SAMURAI (https://markboss.me/publication/2022-samurai/)
+    Largely adapted from the repo created of project.
+    """
+
+    CONSOLE.print("Samurai Marching Cubes STARTED", highlight=True)
+
+    num_samples_mc: int = 100
+    """Number of points to sample per axis. May result in less if outlier removal is used."""
+    num_samples_points: int = 2000000
+    """Number of points sampled on naive mesh"""
+    mc_level: int = int(10)
+    """Threshold value for surfaces. Affects smoothness and amount of floaters. Higher = fewer floaters, more craters in object"""
+    remove_outliers: bool = True
+    """Remove outliers from the point cloud."""
+    depth_output_name: str = "depth"
+    """Name of the depth output."""
+    normal_method: Literal["open3d", "model_output"] = "model_output"
+    """Method to estimate normals with."""
+    normal_output_name: str = "normals"
+    """Name of the normal output."""
+    save_mesh: bool = True
+    """Whether to save the point cloud."""
+    output_file_name: str = "marching-cubes.obj"
+    """Name of file output is saved to"""
+    use_bounding_box: bool = True
+    """Only query points within the bounding box"""
+    bounding_box_min: Tuple[float, float, float] = (-1, -1, -1)
+    """Minimum of the bounding box, used if use_bounding_box is True."""
+    bounding_box_max: Tuple[float, float, float] = (1, 1, 1)
+    """Minimum of the bounding box, used if use_bounding_box is True."""
+    num_rays_per_batch: int = 32768
+    """Number of rays to evaluate per batch. Decrease if you run out of memory."""
+    texture_method: Literal["point_cloud", "nerf"] = "nerf"
+    """Method to texture the mesh with. Either 'point_cloud' or 'nerf'."""
+
+    def validate_pipeline(self, pipeline: Pipeline) -> None:
+        """Check that the pipeline is valid for this exporter."""
+
+    def main(self) -> None:
+        """Export mesh"""
+
+        if not self.output_dir.exists():
+            self.output_dir.mkdir(parents=True)
+
+        _, pipeline, _ = eval_setup(self.load_config)
+
+        self.validate_pipeline(pipeline)
+
+        # Increase the batchsize to speed up the evaluation.
+        pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
+
+        densities = density_sampler(
+            pipeline=pipeline,
+            num_samples=self.num_samples_mc,
+            remove_outliers=self.remove_outliers,
+            depth_output_name=self.depth_output_name,
+            use_bounding_box=self.use_bounding_box,
+            bounding_box_min=self.bounding_box_min,
+            bounding_box_max=self.bounding_box_max,
+        )
+        torch.cuda.empty_cache()
+
+        ##distance is 5% of the avg range of bounding box
+
+        ##size of bb
+        bb_size = tuple(map(lambda i, j: i - j, bounding_box_max, bounding_box_min))
+        bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
+
+        dist_along_normal = bb_avg * 0.05
+
+        device = o3d.core.Device("CUDA:0")
+        dtype_f = o3d.core.float32
+        dtype_i = o3d.core.int32
+
+        verts, faces, normals, values = skimage.measure.marching_cubes(
+            densities, level=self.mc_level, allow_degenerate=False
+        )
+
+        # convert properties to be compatible with cpu Triangle mesh(Has functions tesor does not)
+        o3dVerts = o3d.utility.Vector3dVector(verts)
+        o3dTris = o3d.utility.Vector3iVector(faces)
+        o3dNorms = o3d.utility.Vector3dVector(normals)
+
+        ##mesh = o3d.t.geometry.TriangleMesh(device)
+
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3dVerts
+        mesh.triangles = o3dTris
+        mesh.vertex_normals = o3dNorms
+
+        pcd = mesh.sample_points_uniformly(number_of_points=1000000, use_triangle_normal=True)
+        o3dvis.draw(pcd)
+        pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
+        pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
+
+        pos_and_normals = np.concatenate((pcd_pos, pcd_norms), -1)
+        print(pos_and_normals)
+
+        ##optimise from SAMURAI later
+        for pos_norm_sample in pos_and_normals:
+            pos_sample = pos_norm_sample[..., :3]
+            norm_sample = pos_norm_sample[..., 3:]
+
+            ray_origin = pos_sample + norm_sample * dist_along_normal
+            ray_direction = math.safe_normalize(pos_sample - (pos_sample + norm_sample))
+
+        ##o3dvis.draw(mesh)
+
+        colours = np.zeros_like(verts)
+
+        CONSOLE.print(f"[bold green]:white_check_mark: Generated Marching Cube representation!!")
+
+        # if self.save_mesh:
+        #     ##Other programs for model veiwing read from 1. Python indexes from 0
+        #     facesReindex = faces + 1
+
+        #     mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
 
 
 @dataclass
@@ -423,6 +544,7 @@ Commands = tyro.conf.FlagConversionOff[
         Annotated[ExportTSDFMesh, tyro.conf.subcommand(name="tsdf")],
         Annotated[ExportPoissonMesh, tyro.conf.subcommand(name="poisson")],
         Annotated[ExportMarchingCubesMesh, tyro.conf.subcommand(name="marching-cubes")],
+        Annotated[ExportSamuraiMarchingCubes, tyro.conf.subcommand(name="samurai-mc")],
         Annotated[ExportCameraPoses, tyro.conf.subcommand(name="cameras")],
     ]
 ]

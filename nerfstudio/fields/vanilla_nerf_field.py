@@ -89,7 +89,7 @@ class NeRFField(Field):
             field_head.set_in_dim(self.mlp_head.get_out_dim())  # type: ignore
 
     def get_density(self, ray_samples: RaySamples):
-        print("Vanilla field density function reached")
+        # print("Vanilla field density function reached")
         if self.use_integrated_encoding:
             gaussian_samples = ray_samples.frustums.get_gaussian_blob()
             if self.spatial_distortion is not None:
@@ -102,10 +102,7 @@ class NeRFField(Field):
             encoded_xyz = self.position_encoding(positions)
         base_mlp_out = self.mlp_base(encoded_xyz)
         density = self.field_output_density(base_mlp_out)
-
-        ## on advice of https://github.com/nerfstudio-project/nerfstudio/issues/873#issuecomment-1326602426
-        ## may impact quality of traning
-        return density, torch.sigmoid(base_mlp_out)
+        return density, base_mlp_out
 
     def get_outputs(
         self, ray_samples: RaySamples, density_embedding: Optional[TensorType] = None
