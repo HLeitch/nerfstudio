@@ -456,7 +456,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##distance is 5% of the avg range of bounding box
 
         ##size of bb
-        bb_size = tuple(map(lambda i, j: i - j, bounding_box_max, bounding_box_min))
+        bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
         dist_along_normal = bb_avg * 0.05
@@ -486,8 +486,9 @@ class ExportSamuraiMarchingCubes(Exporter):
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
 
-        pos_and_normals = np.concatenate((pcd_pos, pcd_norms), -1)
+        pos_and_normals = torch.tensor(np.concatenate((pcd_pos, pcd_norms), -1))
         print(pos_and_normals)
+        num_samples_per_point = 10
 
         ##optimise from SAMURAI later
         for pos_norm_sample in pos_and_normals:
@@ -496,6 +497,16 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             ray_origin = pos_sample + norm_sample * dist_along_normal
             ray_direction = math.safe_normalize(pos_sample - (pos_sample + norm_sample))
+            ray_end = pos_sample
+
+            ##from "setup fixed grid sampling()"
+            t_vals = torch.tensor(ray_direction*(torch.linspace(0.0, 1.0, num_samples_per_point)))
+            spaced_points = t_vals + ray_origin
+
+            print(spaced_points)
+            assert False
+
+            RayBundle.get_ray_samples(bin_starts=ray_origin, bin_ends=ray_end)
 
         ##o3dvis.draw(mesh)
 
