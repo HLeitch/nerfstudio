@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -481,32 +482,56 @@ class ExportSamuraiMarchingCubes(Exporter):
         mesh.triangles = o3dTris
         mesh.vertex_normals = o3dNorms
 
-        pcd = mesh.sample_points_uniformly(number_of_points=1000000, use_triangle_normal=True)
-        o3dvis.draw(pcd)
+        pcd = mesh.sample_points_uniformly(number_of_points=50000, use_triangle_normal=True)
+        ##o3dvis.draw(pcd)
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
 
         pos_and_normals = torch.tensor(np.concatenate((pcd_pos, pcd_norms), -1))
         print(pos_and_normals)
-        num_samples_per_point = 10
+        num_samples_per_point = 5
 
         ##optimise from SAMURAI later
+        refined_points = []
+        counter = 0
+
         for pos_norm_sample in pos_and_normals:
+            counter += 1
+            if counter % 5000 == 0:
+                print(f"Counter = {counter}")
+            s_time = time.time()
             pos_sample = pos_norm_sample[..., :3]
             norm_sample = pos_norm_sample[..., 3:]
 
-            ray_origin = pos_sample + norm_sample * dist_along_normal
-            ray_direction = math.safe_normalize(pos_sample - (pos_sample + norm_sample))
+            ray_origin = torch.tensor(pos_sample + norm_sample * dist_along_normal)
+            ray_direction = torch.tensor(math.safe_normalize(pos_sample - (pos_sample + norm_sample)))
             ray_end = pos_sample
 
+            sample_gap = torch.linspace(0.0, 1.0, num_samples_per_point)
+
+            t_vals = []
             ##from "setup fixed grid sampling()"
-            t_vals = torch.tensor(ray_direction*(torch.linspace(0.0, 1.0, num_samples_per_point)))
-            spaced_points = t_vals + ray_origin
+            for i in sample_gap:
+                t_vals.append(ray_direction * i)
 
-            print(spaced_points)
-            assert False
+            t_vals = torch.stack(t_vals)
+            spaced_points = torch.tensor(t_vals + ray_origin)
 
-            RayBundle.get_ray_samples(bin_starts=ray_origin, bin_ends=ray_end)
+            densities = pipeline.model.field.density_fn(spaced_points)
+
+            idx = torch.argmax(densities)
+            if densities[idx] > 0.8:
+                refined_points.append(spaced_points[idx])
+            e_time = time.time()
+            if counter % 5000 == 0:
+                print(e_time - s_time)
+
+        refined_points = torch.stack(refined_points)
+        ref_pcd = o3d.geometry.PointCloud()
+        ref_verts = o3d.utility.Vector3dVector(refined_points)
+        ref_pcd.points = ref_verts
+
+        o3dvis.draw(geometry=(ref_pcd, pcd))
 
         ##o3dvis.draw(mesh)
 
