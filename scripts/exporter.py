@@ -495,43 +495,76 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_points = []
         counter = 0
 
-        for pos_norm_sample in pos_and_normals:
-            counter += 1
-            if counter % 5000 == 0:
-                print(f"Counter = {counter}")
-            s_time = time.time()
-            pos_sample = pos_norm_sample[..., :3]
-            norm_sample = pos_norm_sample[..., 3:]
+        samples_per_batch = 1000  # chunk_size // ray_samples
 
-            ray_origin = torch.tensor(pos_sample + norm_sample * dist_along_normal)
-            ray_direction = torch.tensor(math.safe_normalize(pos_sample - (pos_sample + norm_sample)))
-            ray_end = pos_sample
+        # for pos_norm_sample in pos_and_normals:
+        #     counter += 1
+        #     if counter % 5000 == 0:
+        #         print(f"Counter = {counter}")
+        #     s_time = time.time()
+        #     pos_sample = pos_norm_sample[..., :3]
+        #     norm_sample = pos_norm_sample[..., 3:]
 
-            sample_gap = torch.linspace(0.0, 1.0, num_samples_per_point)
+        #     ray_origin = torch.tensor(pos_sample + norm_sample * dist_along_normal)
+        #     ray_direction = torch.tensor(math.safe_normalize(pos_sample - (pos_sample + norm_sample)))
+        #     ray_end = pos_sample
 
-            t_vals = []
-            ##from "setup fixed grid sampling()"
-            for i in sample_gap:
-                t_vals.append(ray_direction * i)
+        #     sample_gap = torch.linspace(0.0, 1.0, num_samples_per_point)
 
-            t_vals = torch.stack(t_vals)
-            spaced_points = torch.tensor(t_vals + ray_origin)
+        #     t_vals = []
+        #     ##from "setup fixed grid sampling()"
+        #     for i in sample_gap:
+        #         t_vals.append(ray_direction * i)
+
+        #     t_vals = torch.stack(t_vals)
+        #     spaced_points = torch.tensor(t_vals + ray_origin)
+
+        #     densities = pipeline.model.field.density_fn(spaced_points)
+
+        #     idx = torch.argmax(densities)
+        #     if densities[idx] > 0.8:
+        #         refined_points.append(spaced_points[idx])
+        #     e_time = time.time()
+        #     if counter % 5000 == 0:
+        #         print(e_time - s_time)
+
+        # refined_points = torch.stack(refined_points)
+        # ref_pcd = o3d.geometry.PointCloud()
+        # ref_verts = o3d.utility.Vector3dVector(refined_points)
+        # ref_pcd.points = ref_verts
+
+        # o3dvis.draw(geometry=(ref_pcd))
+
+        for position_normal_sample in torch.tensor_split(
+            input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
+        ):
+            position_sample = position_normal_sample[..., :3]
+            normal_sample = position_normal_sample[..., 3:]
+
+            ray_origin = torch.tensor(position_sample + (normal_sample * dist_along_normal))
+            ray_direction = torch.tensor(math.safe_normalize(position_sample - (position_sample + normal_sample)))
+
+            ##sample small area infront and behind original point
+            sample_gap = torch.linspace(0.0, 2 * dist_along_normal, num_samples_per_point)
+
+            spaced_points = torch.empty(size=(ray_origin.shape[0], sample_gap.shape[0], ray_origin.shape[1]))
+            for i in {0: sample_gap.size()[0]}:
+                spaced_points[:, i, :] = ray_origin + (ray_direction * sample_gap[i])
+
+            print(ray_origin)
+
+            print(spaced_points)
+            print(f"spaced points shape = {spaced_points.shape}")
 
             densities = pipeline.model.field.density_fn(spaced_points)
 
-            idx = torch.argmax(densities)
-            if densities[idx] > 0.8:
-                refined_points.append(spaced_points[idx])
-            e_time = time.time()
-            if counter % 5000 == 0:
-                print(e_time - s_time)
+            point_dens = torch.cat((spaced_points, densities), 2)
+            print(f"pointdens = {point_dens}")
+            print(f"densities = {densities}")
 
-        refined_points = torch.stack(refined_points)
-        ref_pcd = o3d.geometry.PointCloud()
-        ref_verts = o3d.utility.Vector3dVector(refined_points)
-        ref_pcd.points = ref_verts
-
-        o3dvis.draw(geometry=(ref_pcd, pcd))
+            densest_in_ray = point_dens.
+            print(densest_in_ray)
+            assert False
 
         ##o3dvis.draw(mesh)
 
