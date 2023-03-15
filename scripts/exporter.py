@@ -489,13 +489,13 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         pos_and_normals = torch.tensor(np.concatenate((pcd_pos, pcd_norms), -1))
         print(pos_and_normals)
-        num_samples_per_point = 5
+        num_samples_per_point = 10
 
         ##optimise from SAMURAI later
         refined_points = []
         counter = 0
 
-        samples_per_batch = 1000  # chunk_size // ray_samples
+        samples_per_batch = 500  # chunk_size // ray_samples
 
         # for pos_norm_sample in pos_and_normals:
         #     counter += 1
@@ -538,6 +538,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
         ):
+            s_time = time.time()
             position_sample = position_normal_sample[..., :3]
             normal_sample = position_normal_sample[..., 3:]
 
@@ -551,20 +552,34 @@ class ExportSamuraiMarchingCubes(Exporter):
             for i in {0: sample_gap.size()[0]}:
                 spaced_points[:, i, :] = ray_origin + (ray_direction * sample_gap[i])
 
-            print(ray_origin)
+            # print(ray_origin)
 
-            print(spaced_points)
-            print(f"spaced points shape = {spaced_points.shape}")
+            # print(spaced_points)
+            # print(f"spaced points shape = {spaced_points.shape}")
 
             densities = pipeline.model.field.density_fn(spaced_points)
 
             point_dens = torch.cat((spaced_points, densities), 2)
-            print(f"pointdens = {point_dens}")
-            print(f"densities = {densities}")
+            # print(f"pointdens = {point_dens}")
+            # print(f"densities = {densities}")
 
-            densest_in_ray = point_dens.
-            print(densest_in_ray)
-            assert False
+            densest_in_ray = densities.argmax(1)
+            # print(densest_in_ray)
+            # print(densest_in_ray.shape)
+
+            idx = 0
+
+            for d in densest_in_ray:
+                refined_points.append(spaced_points[idx, d])
+                continue
+            e_time = time.time()
+            print(f"Loop completed in {e_time-s_time}")
+        refined_points = torch.stack(refined_points)
+        ref_pcd = o3d.geometry.PointCloud()
+        ref_verts = o3d.utility.Vector3dVector(refined_points)
+        ref_pcd.points = ref_verts
+
+        o3dvis.draw(geometry=(ref_pcd))
 
         ##o3dvis.draw(mesh)
 
