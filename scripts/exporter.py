@@ -460,7 +460,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = bb_avg * 0.05
+        dist_along_normal = bb_avg * 0.02
 
         device = o3d.core.Device("CUDA:0")
         dtype_f = o3d.core.float32
@@ -489,13 +489,13 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         pos_and_normals = torch.tensor(np.concatenate((pcd_pos, pcd_norms), -1))
         print(pos_and_normals)
-        num_samples_per_point = 10
 
         ##optimise from SAMURAI later
         refined_points = []
         counter = 0
-
-        samples_per_batch = 1000  # chunk_size // ray_samples
+        chunk_size = 256
+        ray_samples = 16
+        samples_per_batch = chunk_size // ray_samples
 
         # for pos_norm_sample in pos_and_normals:
         #     counter += 1
@@ -535,6 +535,8 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         # o3dvis.draw(geometry=(ref_pcd))
 
+        point_counter = 0
+
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
         ):
@@ -546,7 +548,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             ray_direction = torch.tensor(math.safe_normalize(position_sample - (position_sample + normal_sample)))
 
             ##sample small area infront and behind original point
-            sample_gap = torch.linspace(0.0, 2 * dist_along_normal, num_samples_per_point)
+            sample_gap = torch.linspace(0.0, 2 * dist_along_normal, ray_samples)
 
             spaced_points = torch.empty(size=(ray_origin.shape[0], sample_gap.shape[0], ray_origin.shape[1]))
             for i in {0: sample_gap.size()[0]}:
@@ -570,17 +572,20 @@ class ExportSamuraiMarchingCubes(Exporter):
             idx = 0
 
             for d in densest_in_ray:
-                refined_points.append(spaced_points[idx, d])
+
+                if True:  ##densities[idx, densest_in_ray[idx]] > 0.3:
+                    refined_points.append(spaced_points[idx, d])
+                    point_counter += 1
                 idx += 1
             e_time = time.time()
-            # print(f"Loop completed in {e_time-s_time}")
+        print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points)
         refined_points = refined_points.reshape((-1, 3))
+        print(refined_points)
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
-        ref_verts = o3d.utility.Vector3dVector(refined_points)
+        ref_verts = o3d.utility.Vector3dVector(refined_points.numpy())
         ref_pcd.points = ref_verts
-
         o3dvis.draw(geometry=(ref_pcd))
 
         ##o3dvis.draw(mesh)
