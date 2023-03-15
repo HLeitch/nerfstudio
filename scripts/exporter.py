@@ -495,7 +495,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_points = []
         counter = 0
 
-        samples_per_batch = 500  # chunk_size // ray_samples
+        samples_per_batch = 1000  # chunk_size // ray_samples
 
         # for pos_norm_sample in pos_and_normals:
         #     counter += 1
@@ -571,11 +571,13 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             for d in densest_in_ray:
                 refined_points.append(spaced_points[idx, d])
-                continue
+                idx += 1
             e_time = time.time()
-            print(f"Loop completed in {e_time-s_time}")
+            # print(f"Loop completed in {e_time-s_time}")
         refined_points = torch.stack(refined_points)
+        refined_points = refined_points.reshape((-1, 3))
         ref_pcd = o3d.geometry.PointCloud()
+        ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points)
         ref_pcd.points = ref_verts
 
