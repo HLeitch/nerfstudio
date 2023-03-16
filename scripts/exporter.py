@@ -460,7 +460,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = bb_avg * 0.02
+        dist_along_normal = 0.2  # bb_avg * 0.1
+        print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
         dtype_f = o3d.core.float32
@@ -493,8 +494,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##optimise from SAMURAI later
         refined_points = []
         counter = 0
-        chunk_size = 256
-        ray_samples = 16
+        chunk_size = 65536
+        ray_samples = 32
         samples_per_batch = chunk_size // ray_samples
 
         # for pos_norm_sample in pos_and_normals:
@@ -551,9 +552,8 @@ class ExportSamuraiMarchingCubes(Exporter):
             sample_gap = torch.linspace(0.0, 2 * dist_along_normal, ray_samples)
 
             spaced_points = torch.empty(size=(ray_origin.shape[0], sample_gap.shape[0], ray_origin.shape[1]))
-            for i in {0: sample_gap.size()[0]}:
+            for i in range(0, sample_gap.size()[0]):
                 spaced_points[:, i, :] = ray_origin + (ray_direction * sample_gap[i])
-
             # print(ray_origin)
 
             # print(spaced_points)
@@ -561,33 +561,51 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             densities = pipeline.model.field.density_fn(spaced_points)
 
-            point_dens = torch.cat((spaced_points, densities), 2)
+            # point_dens = torch.cat((spaced_points, densities), 2)
             # print(f"pointdens = {point_dens}")
             # print(f"densities = {densities}")
 
             densest_in_ray = densities.argmax(1)
-            # print(densest_in_ray)
             # print(densest_in_ray.shape)
 
             idx = 0
 
             for d in densest_in_ray:
 
-                if True:  ##densities[idx, densest_in_ray[idx]] > 0.3:
+                if True:  # densities[idx, densest_in_ray[idx]] > 0:
                     refined_points.append(spaced_points[idx, d])
                     point_counter += 1
                 idx += 1
             e_time = time.time()
+            # print(f"Loop Time = {e_time - s_time}")
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points)
+        ref_norms = pipeline.model.field.get_normals(refined_points)
         refined_points = refined_points.reshape((-1, 3))
         print(refined_points)
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.numpy())
         ref_pcd.points = ref_verts
+        ref_pcd.normals = ref_norms
+        print(ref_pcd.points)
         o3dvis.draw(geometry=(ref_pcd))
 
+        CONSOLE.print("Computing Mesh... this may take a while.")
+        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=9)
+        vertices_to_remove = densities < np.quantile(densities, 0.1)
+        mesh.remove_vertices_by_mask(vertices_to_remove)
+        print("\033[A\033[A")
+        CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
+
+        if self.save_mesh:
+            ##Other programs for model veiwing read from 1. Python indexes from 0
+
+            path = self.output_dir.__str__() + "\\" + self.output_file_name
+
+            o3d.io.write_triangle_mesh(path, mesh, print_progress=True)
+
+            mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
         ##o3dvis.draw(mesh)
 
         colours = np.zeros_like(verts)
