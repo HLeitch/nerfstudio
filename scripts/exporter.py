@@ -483,7 +483,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         mesh.triangles = o3dTris
         mesh.vertex_normals = o3dNorms
 
-        pcd = mesh.sample_points_uniformly(number_of_points=50000, use_triangle_normal=True)
+        pcd = mesh.sample_points_uniformly(number_of_points=2000000, use_triangle_normal=True)
         ##o3dvis.draw(pcd)
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
@@ -493,6 +493,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         ##optimise from SAMURAI later
         refined_points = []
+        refined_normals = []
         counter = 0
         chunk_size = 65536
         ray_samples = 32
@@ -574,38 +575,44 @@ class ExportSamuraiMarchingCubes(Exporter):
 
                 if True:  # densities[idx, densest_in_ray[idx]] > 0:
                     refined_points.append(spaced_points[idx, d])
+                    refined_normals.append(normal_sample[idx])
                     point_counter += 1
                 idx += 1
             e_time = time.time()
             # print(f"Loop Time = {e_time - s_time}")
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points)
-        ref_norms = pipeline.model.field.get_normals(refined_points)
+        refined_normals = torch.stack(refined_normals)
+
+        # ref_norms = pipeline.model.field.get_normals(refined_points)
         refined_points = refined_points.reshape((-1, 3))
         print(refined_points)
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.numpy())
+        ref_norms = o3d.utility.Vector3dVector(refined_normals.numpy())
+
         ref_pcd.points = ref_verts
-        ref_pcd.normals = ref_norms
+        # ref_pcd.normals = ref_norms
+        ref_pcd.estimate_normals()
         print(ref_pcd.points)
-        o3dvis.draw(geometry=(ref_pcd))
+        ##o3dvis.draw(geometry=(ref_pcd))
 
-        CONSOLE.print("Computing Mesh... this may take a while.")
-        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=9)
-        vertices_to_remove = densities < np.quantile(densities, 0.1)
-        mesh.remove_vertices_by_mask(vertices_to_remove)
-        print("\033[A\033[A")
-        CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
+        for x in {9, 10, 11, 12}:
+            CONSOLE.print("Computing Mesh... this may take a while.")
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
+            # vertices_to_remove = densities < np.quantile(densities, 0.1)
+            # mesh.remove_vertices_by_mask(vertices_to_remove)
+            print("\033[A\033[A")
+            CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
 
-        if self.save_mesh:
-            ##Other programs for model veiwing read from 1. Python indexes from 0
+            if self.save_mesh:
+                ##Other programs for model veiwing read from 1. Python indexes from 0
 
-            path = self.output_dir.__str__() + "\\" + self.output_file_name
+                path = self.output_dir.__str__() + "\\" + f"depth{x}" + self.output_file_name
 
-            o3d.io.write_triangle_mesh(path, mesh, print_progress=True)
+                o3d.io.write_triangle_mesh(path, mesh, print_progress=True)
 
-            mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
         ##o3dvis.draw(mesh)
 
         colours = np.zeros_like(verts)
