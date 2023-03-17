@@ -593,10 +593,12 @@ class ExportSamuraiMarchingCubes(Exporter):
         ref_norms = o3d.utility.Vector3dVector(refined_normals.numpy())
 
         ref_pcd.points = ref_verts
-        # ref_pcd.normals = ref_norms
-        ref_pcd.estimate_normals()
+        ref_pcd.normals = ref_norms
+        # ref_pcd.estimate_normals()
         print(ref_pcd.points)
         ##o3dvis.draw(geometry=(ref_pcd))
+
+        # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-16_153843/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
         for x in {9, 10, 11, 12}:
             CONSOLE.print("Computing Mesh... this may take a while.")
