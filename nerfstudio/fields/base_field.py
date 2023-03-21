@@ -47,7 +47,6 @@ class Field(nn.Module):
                 origins=positions,
                 directions=torch.ones_like(positions),
                 starts=torch.zeros_like(positions[..., :1]),
-                ##Experimental ends=torch.full_like(positions[..., :1], 0.001),
                 ends=torch.zeros_like(positions[..., :1]),
                 pixel_area=torch.ones_like(positions[..., :1]),
             )

@@ -39,6 +39,7 @@ from rich.progress import (
 from torchtyping import TensorType
 
 from nerfstudio.cameras.cameras import Cameras
+from nerfstudio.cameras.rays import Frustums, RaySamples
 from nerfstudio.data.datasets.base_dataset import InputDataset
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline

@@ -22,7 +22,7 @@ from rich.console import Console
 from typing_extensions import Annotated, Literal
 
 import nerfstudio.exporter.marching_cubes_utils as mcUtils
-from nerfstudio.cameras.rays import RayBundle
+from nerfstudio.cameras.rays import Frustums, RayBundle, RaySamples
 from nerfstudio.exporter import texture_utils, tsdf_utils
 from nerfstudio.exporter.exporter_utils import (
     collect_camera_poses,
@@ -30,6 +30,7 @@ from nerfstudio.exporter.exporter_utils import (
     generate_point_cloud,
     get_mesh_from_filename,
 )
+from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils import math as math
 from nerfstudio.utils.eval_utils import eval_setup
@@ -436,6 +437,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True)
 
+        torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         _, pipeline, _ = eval_setup(self.load_config)
 
         self.validate_pipeline(pipeline)
@@ -460,7 +463,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 0.2  # bb_avg * 0.1
+        dist_along_normal = 0.5  # bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -496,46 +499,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = []
         counter = 0
         chunk_size = 65536
-        ray_samples = 32
+        ray_samples = 128
         samples_per_batch = chunk_size // ray_samples
-
-        # for pos_norm_sample in pos_and_normals:
-        #     counter += 1
-        #     if counter % 5000 == 0:
-        #         print(f"Counter = {counter}")
-        #     s_time = time.time()
-        #     pos_sample = pos_norm_sample[..., :3]
-        #     norm_sample = pos_norm_sample[..., 3:]
-
-        #     ray_origin = torch.tensor(pos_sample + norm_sample * dist_along_normal)
-        #     ray_direction = torch.tensor(math.safe_normalize(pos_sample - (pos_sample + norm_sample)))
-        #     ray_end = pos_sample
-
-        #     sample_gap = torch.linspace(0.0, 1.0, num_samples_per_point)
-
-        #     t_vals = []
-        #     ##from "setup fixed grid sampling()"
-        #     for i in sample_gap:
-        #         t_vals.append(ray_direction * i)
-
-        #     t_vals = torch.stack(t_vals)
-        #     spaced_points = torch.tensor(t_vals + ray_origin)
-
-        #     densities = pipeline.model.field.density_fn(spaced_points)
-
-        #     idx = torch.argmax(densities)
-        #     if densities[idx] > 0.8:
-        #         refined_points.append(spaced_points[idx])
-        #     e_time = time.time()
-        #     if counter % 5000 == 0:
-        #         print(e_time - s_time)
-
-        # refined_points = torch.stack(refined_points)
-        # ref_pcd = o3d.geometry.PointCloud()
-        # ref_verts = o3d.utility.Vector3dVector(refined_points)
-        # ref_pcd.points = ref_verts
-
-        # o3dvis.draw(geometry=(ref_pcd))
 
         point_counter = 0
 
@@ -578,31 +543,51 @@ class ExportSamuraiMarchingCubes(Exporter):
                     refined_normals.append(normal_sample[idx])
                     point_counter += 1
                 idx += 1
+
             e_time = time.time()
             # print(f"Loop Time = {e_time - s_time}")
+
         print(f"pointCounter = {point_counter}")
-        refined_points = torch.stack(refined_points)
+        refined_points = torch.stack(refined_points).to(torch_device)
         refined_normals = torch.stack(refined_normals)
 
-        # ref_norms = pipeline.model.field.get_normals(refined_points)
+        ray_sam = RaySamples(
+            frustums=Frustums(
+                origins=refined_points,
+                directions=torch.ones_like(refined_points).to(torch_device),
+                starts=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+                ends=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+                pixel_area=torch.ones_like(refined_points[..., :1]).to(torch_device),
+            ),
+            camera_indices=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+        )
+
+        ##pipeline.model.field._sample_locations = refined_points
+        outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
+        print(outputs.keys())
+        refined_normals = outputs[FieldHeadNames.NORMALS]
+
         refined_points = refined_points.reshape((-1, 3))
-        print(refined_points)
+        refined_normals = refined_normals.reshape((-1, 3))
+
+        # print(refined_points)
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
-        ref_verts = o3d.utility.Vector3dVector(refined_points.numpy())
-        ref_norms = o3d.utility.Vector3dVector(refined_normals.numpy())
+        ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
+        ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
 
         ref_pcd.points = ref_verts
         ref_pcd.normals = ref_norms
         # ref_pcd.estimate_normals()
         print(ref_pcd.points)
-        ##o3dvis.draw(geometry=(ref_pcd))
-
+        ref_pcd.colors = ref_norms
+        o3dvis.draw(geometry=(ref_pcd))
+        assert False
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-16_153843/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
         for x in {9, 10, 11, 12}:
             CONSOLE.print("Computing Mesh... this may take a while.")
-            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd)
             # vertices_to_remove = densities < np.quantile(densities, 0.1)
             # mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
