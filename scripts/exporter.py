@@ -21,6 +21,7 @@ import tyro
 from rich.console import Console
 from typing_extensions import Annotated, Literal
 
+import nerfstudio.cameras.cameras as nscam
 import nerfstudio.exporter.marching_cubes_utils as mcUtils
 from nerfstudio.cameras.rays import Frustums, RayBundle, RaySamples
 from nerfstudio.exporter import texture_utils, tsdf_utils
@@ -559,13 +560,13 @@ class ExportSamuraiMarchingCubes(Exporter):
                 ends=torch.zeros_like(refined_points[..., :1]).to(torch_device),
                 pixel_area=torch.ones_like(refined_points[..., :1]).to(torch_device),
             ),
-            camera_indices=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+            camera_indices=torch.randint_like(refined_points[..., :1], 150).to(torch_device),
         )
 
         ##pipeline.model.field._sample_locations = refined_points
         outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
         print(outputs.keys())
-        refined_normals = outputs[FieldHeadNames.NORMALS]
+        refined_normals = outputs[FieldHeadNames.PRED_NORMALS]
 
         refined_points = refined_points.reshape((-1, 3))
         refined_normals = refined_normals.reshape((-1, 3))
@@ -574,7 +575,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
-        ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
+        ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
 
         ref_pcd.points = ref_verts
         ref_pcd.normals = ref_norms
@@ -583,11 +584,11 @@ class ExportSamuraiMarchingCubes(Exporter):
         ref_pcd.colors = ref_norms
         o3dvis.draw(geometry=(ref_pcd))
         assert False
-        # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-16_153843/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
+        # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
         for x in {9, 10, 11, 12}:
             CONSOLE.print("Computing Mesh... this may take a while.")
-            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd)
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
             # vertices_to_remove = densities < np.quantile(densities, 0.1)
             # mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
