@@ -480,7 +480,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         o3dTris = o3d.utility.Vector3iVector(faces)
         o3dNorms = o3d.utility.Vector3dVector(normals)
 
-        ##mesh = o3d.t.geometry.TriangleMesh(device)
+        mesh = o3d.t.geometry.TriangleMesh(device)
 
         mesh = o3d.geometry.TriangleMesh()
         mesh.vertices = o3dVerts
@@ -488,7 +488,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         mesh.vertex_normals = o3dNorms
 
         pcd = mesh.sample_points_uniformly(number_of_points=2000000, use_triangle_normal=True)
-        ##o3dvis.draw(pcd)
+        o3dvis.draw(pcd)
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
 
@@ -541,7 +541,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
                 if True:  # densities[idx, densest_in_ray[idx]] > 0:
                     refined_points.append(spaced_points[idx, d])
-                    refined_normals.append(normal_sample[idx])
+                    ##refined_normals.append(normal_sample[idx])
                     point_counter += 1
                 idx += 1
 
@@ -550,7 +550,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
-        refined_normals = torch.stack(refined_normals)
+        ##refined_normals = torch.stack(refined_normals)
 
         ray_sam = RaySamples(
             frustums=Frustums(
@@ -566,7 +566,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##pipeline.model.field._sample_locations = refined_points
         outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
         print(outputs.keys())
-        refined_normals = outputs[FieldHeadNames.PRED_NORMALS]
+        refined_normals = outputs[FieldHeadNames.NORMALS]
 
         refined_points = refined_points.reshape((-1, 3))
         refined_normals = refined_normals.reshape((-1, 3))
