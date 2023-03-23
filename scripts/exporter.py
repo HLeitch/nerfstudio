@@ -533,7 +533,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             # print(f"densities = {densities}")
 
             densest_in_ray = densities.argmax(1)
-
+            print(f"Before raysample declared: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             ## Compute average of normals of each point sampled.
             ray_sam = RaySamples(
                 frustums=Frustums(
@@ -551,6 +551,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             normal_sample = outputs[FieldHeadNames.PRED_NORMALS]
             normal_sample = torch.mean(normal_sample, 1)
+            print(normal_sample)
             idx = 0
 
             for d in densest_in_ray:
@@ -562,6 +563,7 @@ class ExportSamuraiMarchingCubes(Exporter):
                 idx += 1
             print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             e_time = time.time()
+
             print(f"Loop Time = {e_time - s_time}")
 
         print(f"pointCounter = {point_counter}")
