@@ -545,8 +545,10 @@ class ExportSamuraiMarchingCubes(Exporter):
                 ),
                 camera_indices=torch.randint_like(spaced_points[..., :1], 150).cuda(),
             )
-
+            print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
+            print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+
             normal_sample = outputs[FieldHeadNames.PRED_NORMALS]
             normal_sample = torch.mean(normal_sample, 1)
             idx = 0
@@ -558,7 +560,7 @@ class ExportSamuraiMarchingCubes(Exporter):
                     refined_normals.append(normal_sample[idx])
                     point_counter += 1
                 idx += 1
-            torch.cuda.empty_cache()
+            print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             e_time = time.time()
             print(f"Loop Time = {e_time - s_time}")
 
