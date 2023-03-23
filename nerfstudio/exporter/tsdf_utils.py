@@ -1,4 +1,4 @@
- # Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 The Nerfstudio Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -316,7 +316,9 @@ def export_tsdf_mesh(
     # move TSDF to device
     tsdf.to(device)
 
+    # camera per image supplied
     cameras = dataparser_outputs.cameras
+    print(cameras.camera_to_worlds.shape)
     # we turn off distortion when populating the TSDF
     color_images, depth_images = render_trajectory(
         pipeline,
