@@ -432,9 +432,9 @@ class ExportSamuraiMarchingCubes(Exporter):
     def validate_pipeline(self, pipeline: Pipeline) -> None:
         """Check that the pipeline is valid for this exporter."""
 
+    @torch.no_grad()
     def main(self) -> None:
         """Export mesh"""
-
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True)
 
@@ -464,7 +464,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 0.8  # bb_avg * 0.1
+        dist_along_normal = 0.05  # bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -487,7 +487,11 @@ class ExportSamuraiMarchingCubes(Exporter):
         mesh.triangles = o3dTris
         mesh.vertex_normals = o3dNorms
 
-        pcd = mesh.sample_points_uniformly(number_of_points=500000, use_triangle_normal=True)
+        pcd = mesh.sample_points_uniformly(number_of_points=2000000, use_triangle_normal=True)
+        print(
+            f"After points sampled from mesh: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()} gpu mem allocated"
+        )
+        torch.cuda.empty_cache()
         o3dvis.draw(pcd)
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
@@ -501,7 +505,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         colours = []
         counter = 0
         chunk_size = 131072  # 65536 ##2^16
-        ray_samples = 32
+        ray_samples = 16
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
         coloursToUse = [
@@ -519,6 +523,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
         ):
+            torch.cuda.empty_cache()
             s_time = time.time()
             position_sample = position_normal_sample[..., :3]
             normal_sample = position_normal_sample[..., 3:]
@@ -532,6 +537,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             spaced_points = torch.empty(size=(ray_origin.shape[0], sample_gap.shape[0], ray_origin.shape[1]))
             for i in range(0, sample_gap.size()[0]):
                 spaced_points[:, i, :] = ray_origin + (ray_direction * sample_gap[i])
+
             # print(ray_origin)
 
             # print(spaced_points)
@@ -556,9 +562,9 @@ class ExportSamuraiMarchingCubes(Exporter):
                 ),
                 camera_indices=torch.randint_like(spaced_points[..., :1], 150).cuda(),
             )
-            print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            # print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
-            print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
 
             normal_sample = outputs[FieldHeadNames.NORMALS]
             normal_sample = torch.mean(normal_sample, 1)
@@ -570,11 +576,11 @@ class ExportSamuraiMarchingCubes(Exporter):
                 if True:  # densities[idx, densest_in_ray[idx]] > 0:
                     refined_points.append(spaced_points[idx, d])
                     refined_normals.append(normal_sample[idx])
-                    colours.append(coloursToUse[colouridx])
+
                     point_counter += 1
                 idx += 1
             coloursCounter += 1
-            print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            # print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             e_time = time.time()
 
             print(f"Loop Time = {e_time - s_time}")
@@ -591,20 +597,20 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
         ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
-        ref_colours = o3d.utility.Vector3dVector(np.array(colours))
+        # ref_colours = o3d.utility.Vector3dVector(np.array(colours))
 
         ref_pcd.points = ref_verts
         ref_pcd.normals = ref_norms
         # ref_pcd.estimate_normals()
         print(ref_pcd.points)
-        ref_pcd.colors = ref_colours
+        ref_pcd.colors = ref_norms
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
-        for x in {6, 7, 8, 9, 10, 11, 12}:
+        for x in {9, 10, 11, 12}:
             CONSOLE.print("Computing Mesh... this may take a while.")
             mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-            vertices_to_remove = densities < np.quantile(densities, 0.1)
+            vertices_to_remove = densities < np.quantile(densities, 0.3)
             mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
             CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
