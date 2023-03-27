@@ -506,7 +506,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         colours = []
         counter = 0
         chunk_size = 131072  # 65536 ##2^16
-        ray_samples = 16
+        ray_samples = 32
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
         coloursToUse = [
@@ -601,17 +601,17 @@ class ExportSamuraiMarchingCubes(Exporter):
         # ref_colours = o3d.utility.Vector3dVector(np.array(colours))
 
         ref_pcd.points = ref_verts
-        ref_pcd.normals = ref_norms
-        # ref_pcd.estimate_normals()
+        # ref_pcd.normals = ref_norms
+        ref_pcd.estimate_normals()
         print(ref_pcd.points)
-        ref_pcd.colors = ref_norms
+        ref_pcd.colors = ref_pcd.normals
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
-        for x in {9, 10, 11, 12}:
+        for x in {9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
-            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-            vertices_to_remove = densities < np.quantile(densities, 0.3)
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x, width=1)
+            vertices_to_remove = densities < np.quantile(densities, 0.1)
             mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
             CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
