@@ -352,6 +352,7 @@ class ExportMarchingCubesMesh(Exporter):
     def validate_pipeline(self, pipeline: Pipeline) -> None:
         """Check that the pipeline is valid for this exporter."""
 
+    @torch.no_grad()
     def main(self) -> None:
         """Export mesh"""
 

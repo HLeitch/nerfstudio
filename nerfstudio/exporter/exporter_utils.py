@@ -206,6 +206,7 @@ def generate_point_cloud(
     return pcd
 
 
+@torch.no_grad()
 def density_sampler(
     pipeline: Pipeline,
     num_samples: int = 100,
