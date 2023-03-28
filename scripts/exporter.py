@@ -610,7 +610,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         for x in {9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
-            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x, width=1)
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
             vertices_to_remove = densities < np.quantile(densities, 0.1)
             mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
