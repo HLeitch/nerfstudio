@@ -465,7 +465,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 1  # bb_avg * 0.1
+        dist_along_normal = 20  # bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -488,7 +488,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         mesh.triangles = o3dTris
         mesh.vertex_normals = o3dNorms
 
-        pcd = mesh.sample_points_uniformly(number_of_points=2000000, use_triangle_normal=True)
+        pcd = mesh.sample_points_uniformly(number_of_points=1000000, use_triangle_normal=True)
         print(
             f"After points sampled from mesh: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()} gpu mem allocated"
         )
@@ -529,8 +529,11 @@ class ExportSamuraiMarchingCubes(Exporter):
             position_sample = position_normal_sample[..., :3]
             normal_sample = position_normal_sample[..., 3:]
 
-            ray_origin = torch.tensor(position_sample + (normal_sample * dist_along_normal))
-            ray_direction = torch.tensor(math.safe_normalize(position_sample - (position_sample + normal_sample)))
+            ##direction from point along normal towards original point on mesh
+            ray_direction = torch.tensor(math.safe_normalize((position_sample + normal_sample) - position_sample))
+
+            # Ray origin at the extent of the distance along normal, stepping toward surface
+            ray_origin = torch.tensor(position_sample + (-ray_direction * dist_along_normal))
 
             ##sample small area infront and behind original point
             sample_gap = torch.linspace(0.0, 2 * dist_along_normal, ray_samples)
@@ -577,19 +580,15 @@ class ExportSamuraiMarchingCubes(Exporter):
                 if densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d])
                     ##refined_normals.append(normal_sample[idx])
-                    colours.append(
-                        torch.tensor(
-                            (
-                                [
-                                    densities[idx, densest_in_ray[idx]],
-                                    densities[idx, densest_in_ray[idx]],
-                                    densities[idx, densest_in_ray[idx]],
-                                ]
-                            )
-                        )
-                    )
+                    ##colours.append(torch.tensor(([densities[idx, densest_in_ray[idx]]])))
                     point_counter += 1
+
+                ##testing. outputs all idx at some points
+                if idx % 1000 == 0:
+                    for d in spaced_points[idx]:
+                        refined_points.append(torch.tensor([[d[0], d[1], d[2]]]))
                 idx += 1
+
             coloursCounter += 1
             # print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             e_time = time.time()
@@ -612,7 +611,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             camera_indices=torch.zeros_like(refined_points[..., :1]).to(torch_device),
         )
 
-        colours = torch.stack(colours)
+        # colours = torch.stack(colours)
 
         ##pipeline.model.field._sample_locations = refined_points
         outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
@@ -625,13 +624,13 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
         ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
-        ref_colours = o3d.utility.Vector3dVector(np.array(colours))
+        ##ref_colours = o3d.utility.Vector3dVector(np.array(colours))
 
         ref_pcd.points = ref_verts
         ref_pcd.normals = ref_norms
         # ref_pcd.estimate_normals()
         print(ref_pcd.points)
-        ref_pcd.colors = ref_colours
+        ref_pcd.colors = ref_norms
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 

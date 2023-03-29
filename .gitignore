@@ -184,3 +184,13 @@ bash/
 cache/
 package-lock.json
 camera_paths/
+
+test-sphere/images/
+
+test-sphere/images_2/
+
+test-sphere/images_4/
+
+test-sphere/images_8/
+
+test-sphere/originals/
