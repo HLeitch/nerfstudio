@@ -465,7 +465,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 20  # bb_avg * 0.1
+        dist_along_normal = 3  # bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -473,7 +473,9 @@ class ExportSamuraiMarchingCubes(Exporter):
         dtype_i = o3d.core.int32
 
         verts, faces, normals, values = skimage.measure.marching_cubes(
-            densities, level=self.mc_level, allow_degenerate=False
+            densities,
+            allow_degenerate=False,
+            level=self.mc_level,
         )
 
         # convert properties to be compatible with cpu Triangle mesh(Has functions tesor does not)
@@ -493,7 +495,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             f"After points sampled from mesh: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()} gpu mem allocated"
         )
         torch.cuda.empty_cache()
-        # o3dvis.draw(pcd)
+        o3dvis.draw(pcd)
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
 
@@ -505,8 +507,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = []
         colours = []
         counter = 0
-        chunk_size = 131072  # 65536 ##2^16
-        ray_samples = 32
+        chunk_size = 262144  # 65536 ##2^16
+        ray_samples = 64
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
         coloursToUse = [
@@ -580,13 +582,13 @@ class ExportSamuraiMarchingCubes(Exporter):
                 if densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d])
                     ##refined_normals.append(normal_sample[idx])
-                    ##colours.append(torch.tensor(([densities[idx, densest_in_ray[idx]]])))
+
                     point_counter += 1
 
                 ##testing. outputs all idx at some points
                 if idx % 1000 == 0:
-                    for d in spaced_points[idx]:
-                        refined_points.append(torch.tensor([[d[0], d[1], d[2]]]))
+                    for p in spaced_points[idx]:
+                        refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
                 idx += 1
 
             coloursCounter += 1
@@ -624,7 +626,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
         ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
-        ##ref_colours = o3d.utility.Vector3dVector(np.array(colours))
+        # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
 
         ref_pcd.points = ref_verts
         ref_pcd.normals = ref_norms
@@ -634,7 +636,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
-        ##ns-render --load-config outputs\data\test-sphere\nerfacto\2023-03-28_111624/config.yml --traj filename --camera-path-filename data\test-sphere/camera_paths/2023-03-28_111624.json --bounding-box-min -0.275 -0.024999999999999994 -0.095 --bounding-box-max -0.024999999999999994 0.225 0.155
+        ##ns-render --load-config outputs\test-sphere\nerfacto\2023-03-31_133039/config.yml --traj filename --camera-path-filename data\test-sphere/camera_paths/2023-03-28_111624.json \test-sphere/camera_paths/2023-03-28_111624.json --bounding-box-min -0.275 -0.024999999999999994 -0.095 --bounding-box-max -0.024999999999999994 0.225 0.155
 
         for x in {9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
