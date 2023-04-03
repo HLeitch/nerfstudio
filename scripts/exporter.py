@@ -465,7 +465,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 3  # bb_avg * 0.1
+        dist_along_normal = 0.5  # bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -508,7 +508,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         colours = []
         counter = 0
         chunk_size = 262144  # 65536 ##2^16
-        ray_samples = 64
+        ray_samples = 16
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
         coloursToUse = [
