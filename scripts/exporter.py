@@ -541,8 +541,13 @@ class ExportSamuraiMarchingCubes(Exporter):
             sample_gap = torch.linspace(0.0, 2 * dist_along_normal, ray_samples)
 
             spaced_points = torch.empty(size=(ray_origin.shape[0], sample_gap.shape[0], ray_origin.shape[1]))
+            ray_point_normals = torch.empty(size=(ray_origin.shape[0], sample_gap.shape[0], ray_origin.shape[1]))
+
             for i in range(0, sample_gap.size()[0]):
                 spaced_points[:, i, :] = ray_origin + (ray_direction * sample_gap[i])
+
+            for n in range(0, ray_origin.size()[0]):
+                ray_point_normals[n, :, :] = normal_sample[n]
 
             # print(ray_origin)
 
@@ -557,23 +562,23 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             densest_in_ray = densities.argmax(1)
             print(f"Before raysample declared: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
-            ## Compute average of normals of each point sampled.
-            # ray_sam = RaySamples(
-            #     frustums=Frustums(
-            #         origins=spaced_points.cuda(),
-            #         directions=torch.ones_like(spaced_points).cuda(),
-            #         starts=torch.zeros_like(spaced_points[..., :1]).cuda(),
-            #         ends=torch.zeros_like(spaced_points[..., :1]).cuda(),
-            #         pixel_area=torch.ones_like(spaced_points[..., :1]).cuda(),
-            #     ),
-            #     camera_indices=torch.randint_like(spaced_points[..., :1], 150).cuda(),
-            # )
-            # # print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
-            # outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
-            # # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            # Compute average of normals of each point sampled.
+            ray_sam = RaySamples(
+                frustums=Frustums(
+                    origins=spaced_points.cuda(),
+                    directions=torch.ones_like(ray_point_normals).cuda(),
+                    starts=torch.zeros_like(spaced_points[..., :1]).cuda(),
+                    ends=(torch.ones_like(spaced_points[..., :1]) * (dist_along_normal / ray_samples)).cuda(),
+                    pixel_area=torch.ones_like(spaced_points[..., :1]).cuda(),
+                ),
+                camera_indices=torch.randint_like(spaced_points[..., :1], 150).cuda(),
+            )
+            # print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
+            # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
 
-            # normal_sample = outputs[FieldHeadNames.NORMALS]
-            # normal_sample = torch.mean(normal_sample, 1)
+            normal_sample = outputs[FieldHeadNames.NORMALS]
+            ##normal_sample = torch.mean(normal_sample, 1)
             ## print(normal_sample)
             idx = 0
             colouridx = coloursCounter % len(coloursToUse)
@@ -581,14 +586,14 @@ class ExportSamuraiMarchingCubes(Exporter):
 
                 if densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d])
-                    ##refined_normals.append(normal_sample[idx])
+                    refined_normals.append(normal_sample[idx, d])
 
                     point_counter += 1
 
-                ##testing. outputs all idx at some points
-                if idx % 1000 == 0:
-                    for p in spaced_points[idx]:
-                        refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
+                # ##testing. outputs all points sampled for some rays
+                # if idx % 1000 == 0:
+                #     for p in spaced_points[idx]:
+                #         refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
                 idx += 1
 
             coloursCounter += 1
@@ -599,26 +604,27 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
+        refined_normals = torch.stack(refined_normals).to(torch_device)
 
         refined_points = refined_points.reshape((-1, 3))
 
-        ray_sam = RaySamples(
-            frustums=Frustums(
-                origins=refined_points,
-                directions=torch.ones_like(refined_points).to(torch_device),
-                starts=torch.zeros_like(refined_points[..., :1]).to(torch_device),
-                ends=torch.zeros_like(refined_points[..., :1]).to(torch_device),
-                pixel_area=torch.ones_like(refined_points[..., :1]).to(torch_device),
-            ),
-            camera_indices=torch.zeros_like(refined_points[..., :1]).to(torch_device),
-        )
+        # ray_sam = RaySamples(
+        #     frustums=Frustums(
+        #         origins=refined_points,
+        #         directions=torch.ones_like(refined_points).to(torch_device),
+        #         starts=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+        #         ends=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+        #         pixel_area=torch.ones_like(refined_points[..., :1]).to(torch_device),
+        #     ),
+        #     camera_indices=torch.zeros_like(refined_points[..., :1]).to(torch_device),
+        # )
 
         # colours = torch.stack(colours)
 
         ##pipeline.model.field._sample_locations = refined_points
-        outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
-        print(outputs.keys())
-        refined_normals = outputs[FieldHeadNames.NORMALS]
+        # outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
+        # print(outputs.keys())
+        # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
 
         # print(refined_points)
@@ -636,7 +642,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
-        ##ns-render --load-config outputs\test-sphere\nerfacto\2023-03-31_133039/config.yml --traj filename --camera-path-filename data\test-sphere/camera_paths/2023-03-28_111624.json \test-sphere/camera_paths/2023-03-28_111624.json --bounding-box-min -0.275 -0.024999999999999994 -0.095 --bounding-box-max -0.024999999999999994 0.225 0.155
+        ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_163415/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.07500000000000001 -0.225 -0.075 --bounding-box-max 0.325 0.024999999999999994 0.175 --num-samples-mc 250
 
         for x in {9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
