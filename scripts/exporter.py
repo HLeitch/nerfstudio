@@ -673,6 +673,79 @@ class ExportSamuraiMarchingCubes(Exporter):
 
 
 @dataclass
+class ExportMarchingTetTSDFMesh(Exporter):
+    """
+    Export a mesh using TSDF processing.
+    """
+
+    downscale_factor: int = 2
+    """Downscale the images starting from the resolution used for training."""
+    depth_output_name: str = "depth"
+    """Name of the depth output."""
+    rgb_output_name: str = "rgb"
+    """Name of the RGB output."""
+    resolution: Union[int, List[int]] = field(default_factory=lambda: [128, 128, 128])
+    """Resolution of the TSDF volume or [x, y, z] resolutions individually."""
+    batch_size: int = 10
+    """How many depth images to integrate per batch."""
+    use_bounding_box: bool = True
+    """Whether to use a bounding box for the TSDF volume."""
+    bounding_box_min: Tuple[float, float, float] = (-1, -1, -1)
+    """Minimum of the bounding box, used if use_bounding_box is True."""
+    bounding_box_max: Tuple[float, float, float] = (1, 1, 1)
+    """Minimum of the bounding box, used if use_bounding_box is True."""
+    texture_method: Literal["tsdf", "nerf"] = "nerf"
+    """Method to texture the mesh with. Either 'tsdf' or 'nerf'."""
+    px_per_uv_triangle: int = 4
+    """Number of pixels per UV triangle."""
+    unwrap_method: Literal["xatlas", "custom"] = "xatlas"
+    """The method to use for unwrapping the mesh."""
+    num_pixels_per_side: int = 2048
+    """If using xatlas for unwrapping, the pixels per side of the texture image."""
+    target_num_faces: Optional[int] = 50000
+    """Target number of faces for the mesh to texture."""
+
+    def main(self) -> None:
+        """Export mesh"""
+
+        if not self.output_dir.exists():
+            self.output_dir.mkdir(parents=True)
+
+        _, pipeline, _ = eval_setup(self.load_config)
+
+        tsdf_utils.export_marching_tet(
+            pipeline,
+            self.output_dir,
+            self.downscale_factor,
+            self.depth_output_name,
+            self.rgb_output_name,
+            self.resolution,
+            self.batch_size,
+            use_bounding_box=self.use_bounding_box,
+            bounding_box_min=self.bounding_box_min,
+            bounding_box_max=self.bounding_box_max,
+        )
+
+        # possibly
+        # texture the mesh with NeRF and export to a mesh.obj file
+        # and a material and texture file
+        if self.texture_method == "nerf":
+            # load the mesh from the tsdf export
+            mesh = get_mesh_from_filename(
+                str(self.output_dir / "tsdf_mesh.ply"), target_num_faces=self.target_num_faces
+            )
+            CONSOLE.print("Texturing mesh with NeRF")
+            texture_utils.export_textured_mesh(
+                mesh,
+                pipeline,
+                self.output_dir,
+                px_per_uv_triangle=self.px_per_uv_triangle if self.unwrap_method == "custom" else None,
+                unwrap_method=self.unwrap_method,
+                num_pixels_per_side=self.num_pixels_per_side,
+            )
+
+
+@dataclass
 class ExportCameraPoses(Exporter):
     """
     Export camera poses to a .json file.
@@ -707,6 +780,7 @@ Commands = tyro.conf.FlagConversionOff[
         Annotated[ExportPoissonMesh, tyro.conf.subcommand(name="poisson")],
         Annotated[ExportMarchingCubesMesh, tyro.conf.subcommand(name="marching-cubes")],
         Annotated[ExportSamuraiMarchingCubes, tyro.conf.subcommand(name="samurai-mc")],
+        Annotated[ExportMarchingTetTSDFMesh, tyro.conf.subcommand(name="Marching-tet")],
         Annotated[ExportCameraPoses, tyro.conf.subcommand(name="cameras")],
     ]
 ]
