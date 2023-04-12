@@ -350,7 +350,7 @@ class DepthRenderer16Percentile(nn.Module):
         raise NotImplementedError(f"Method {self.method} not implemented")
 
 
-class DepthRenderer64Percentile(nn.Module):
+class DepthRenderer84Percentile(nn.Module):
     """Calculate depth along ray when density reaches 0.84.
 
     Depth Method:

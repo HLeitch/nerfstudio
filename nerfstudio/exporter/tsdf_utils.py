@@ -33,6 +33,7 @@ from skimage import measure
 from torchtyping import TensorType
 
 from nerfstudio.exporter.exporter_utils import Mesh, render_trajectory
+from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
 
 CONSOLE = Console(width=120)
@@ -182,7 +183,6 @@ class TSDF:
             color_images: The color images to integrate.
             mask_images: The mask images to integrate.
         """
-        print(depth_images.shape())
         if mask_images is not None:
             raise NotImplementedError("Mask images are not supported yet.")
 
@@ -353,7 +353,7 @@ def export_tsdf_mesh(
     tsdf.export_mesh(mesh, filename=str(output_dir / "tsdf_mesh.ply"))
 
 
-def export_marching_tet(
+def export_tri_depth_tsdf(
     pipeline: Pipeline,
     output_dir: Path,
     downscale_factor: int = 2,
@@ -395,15 +395,29 @@ def export_marching_tet(
         volume_dims = torch.tensor(resolution)
     else:
         raise ValueError("Resolution must be an int or a list.")
-    tsdf = TSDF.from_aabb(aabb, volume_dims=volume_dims)
+    tsdf_surface = TSDF.from_aabb(aabb, volume_dims=volume_dims)
+    tsdf_outside = TSDF.from_aabb(aabb, volume_dims=volume_dims)
+    tsdf_inside = TSDF.from_aabb(aabb, volume_dims=volume_dims)
     # move TSDF to device
-    tsdf.to(device)
+    tsdf_surface.to(device)
+    tsdf_outside.to(device)
+    tsdf_inside.to(device)
+
+    ##Use a new instance of the nerfacto model with 3 depth samplers.
+    old_model = pipeline._model
+
+    pipeline._model = NerfactoModelTriDepth(
+        config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
+    )
+    pipeline.model.cuda()
+
+    ###################################################
+    ###SURFACE###
+    ###################################################
 
     # camera per image supplied
     cameras = dataparser_outputs.cameras
     print(f"num Cameras: {cameras.camera_to_worlds} ")
-    print(f"depth output name: {depth_output_name}")
-    assert False
     # we turn off distortion when populating the TSDF
     color_images, depth_images = render_trajectory(
         pipeline,
@@ -425,7 +439,76 @@ def export_marching_tet(
 
     CONSOLE.print("Integrating the TSDF")
     for i in range(0, len(c2w), batch_size):
-        tsdf.integrate_tsdf(
+        tsdf_surface.integrate_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images[i : i + batch_size],
+            color_images=color_images[i : i + batch_size],
+        )
+
+    ###################################################
+    ###OUTSIDE###
+    ###################################################
+
+    # camera per image supplied
+    cameras = dataparser_outputs.cameras
+    print(f"num Cameras: {cameras.camera_to_worlds} ")
+    # we turn off distortion when populating the TSDF
+    color_images, depth_images = render_trajectory(
+        pipeline,
+        cameras,
+        rgb_output_name=rgb_output_name,
+        depth_output_name="depth_16",
+        rendered_resolution_scaling_factor=1.0 / downscale_factor,
+        disable_distortion=True,
+    )
+
+    # camera extrinsics and intrinsics
+    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
+    # make c2w homogeneous
+    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
+    c2w[:, 3, 3] = 1
+    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
+    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
+    depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+
+    CONSOLE.print("Integrating the TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_outside.integrate_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images[i : i + batch_size],
+            color_images=color_images[i : i + batch_size],
+        )
+    ###################################################
+    ###INSIDE###
+    ###################################################
+
+    # camera per image supplied
+    cameras = dataparser_outputs.cameras
+    print(f"num Cameras: {cameras.camera_to_worlds} ")
+    # we turn off distortion when populating the TSDF
+    color_images, depth_images = render_trajectory(
+        pipeline,
+        cameras,
+        rgb_output_name=rgb_output_name,
+        depth_output_name="depth_84",
+        rendered_resolution_scaling_factor=1.0 / downscale_factor,
+        disable_distortion=True,
+    )
+
+    # camera extrinsics and intrinsics
+    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
+    # make c2w homogeneous
+    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
+    c2w[:, 3, 3] = 1
+    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
+    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
+    depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+
+    CONSOLE.print("Integrating the TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_inside.integrate_tsdf(
             c2w[i : i + batch_size],
             K[i : i + batch_size],
             depth_images[i : i + batch_size],
@@ -433,6 +516,16 @@ def export_marching_tet(
         )
 
     CONSOLE.print("Computing Mesh")
-    mesh = tsdf.get_mesh()
+
+    print(tsdf_surface)
+    print(tsdf_outside)
+    print(tsdf_inside)
+
+    mesh_surface = tsdf_surface.get_mesh()
+    mesh_inside = tsdf_inside.get_mesh()
+    mesh_outside = tsdf_outside.get_mesh()
+
     CONSOLE.print("Saving TSDF Mesh")
-    tsdf.export_mesh(mesh, filename=str(output_dir / "tsdf_mesh.ply"))
+    tsdf_surface.export_mesh(mesh_surface, filename=str(output_dir / "tsdf_mesh_surface.ply"))
+    tsdf_inside.export_mesh(mesh_inside, filename=str(output_dir / "tsdf_mesh_inside.ply"))
+    tsdf_outside.export_mesh(mesh_outside, filename=str(output_dir / "tsdf_mesh_outside.ply"))

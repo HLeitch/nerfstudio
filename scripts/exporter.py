@@ -713,7 +713,7 @@ class ExportMarchingTetTSDFMesh(Exporter):
 
         _, pipeline, _ = eval_setup(self.load_config)
 
-        tsdf_utils.export_marching_tet(
+        tsdf_utils.export_tri_depth_tsdf(
             pipeline,
             self.output_dir,
             self.downscale_factor,
