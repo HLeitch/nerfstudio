@@ -121,6 +121,7 @@ class TSDF:
 
         # run marching cubes on CPU
         tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
+        print(tsdf_values_np)
         vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np, level=0, allow_degenerate=False)
 
         vertices_indices = np.round(vertices).astype(int)
@@ -403,13 +404,19 @@ def export_tri_depth_tsdf(
     tsdf_outside.to(device)
     tsdf_inside.to(device)
 
-    ##Use a new instance of the nerfacto model with 3 depth samplers.
+    ##Use a new instance of the nerfacto model with 3 depth samplers in ray outputs.
     old_model = pipeline._model
+    old_model_states = old_model.state_dict()
 
     pipeline._model = NerfactoModelTriDepth(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
     )
+
+    pipeline.model.load_state_dict(old_model_states)
+
     pipeline.model.cuda()
+
+    ###3 SDFs are trained.
 
     ###################################################
     ###SURFACE###
@@ -437,7 +444,7 @@ def export_tri_depth_tsdf(
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
     depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
-    CONSOLE.print("Integrating the TSDF")
+    CONSOLE.print("Integrating the Surface TSDF")
     for i in range(0, len(c2w), batch_size):
         tsdf_surface.integrate_tsdf(
             c2w[i : i + batch_size],
@@ -452,7 +459,6 @@ def export_tri_depth_tsdf(
 
     # camera per image supplied
     cameras = dataparser_outputs.cameras
-    print(f"num Cameras: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
     color_images, depth_images = render_trajectory(
         pipeline,
@@ -472,7 +478,7 @@ def export_tri_depth_tsdf(
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
     depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
-    CONSOLE.print("Integrating the TSDF")
+    CONSOLE.print("Integrating the External TSDF")
     for i in range(0, len(c2w), batch_size):
         tsdf_outside.integrate_tsdf(
             c2w[i : i + batch_size],
@@ -506,7 +512,7 @@ def export_tri_depth_tsdf(
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
     depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
-    CONSOLE.print("Integrating the TSDF")
+    CONSOLE.print("Integrating the Internal TSDF")
     for i in range(0, len(c2w), batch_size):
         tsdf_inside.integrate_tsdf(
             c2w[i : i + batch_size],
@@ -516,10 +522,6 @@ def export_tri_depth_tsdf(
         )
 
     CONSOLE.print("Computing Mesh")
-
-    print(tsdf_surface)
-    print(tsdf_outside)
-    print(tsdf_inside)
 
     mesh_surface = tsdf_surface.get_mesh()
     mesh_inside = tsdf_inside.get_mesh()

@@ -642,7 +642,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
-        ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_163415/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.07500000000000001 -0.225 -0.075 --bounding-box-max 0.325 0.024999999999999994 0.175 --num-samples-mc 250
+        ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_165440/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.013000000000000067 -0.24700000000000005 -0.15000000000000002 --bounding-box-max 0.3430000000000001 0.08299999999999998 0.18000000000000005 --num-samples-mc 250
 
         for x in {9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
