@@ -31,7 +31,7 @@
   },
   "editor.formatOnSave": true,
   "python.envFile": "${workspaceFolder}/.env",
-  "python.formatting.provider": "black",
+  "python.formatting.provider": "none",
   "python.formatting.blackArgs": ["--line-length=120"],
   "python.linting.pylintEnabled": true,
   "python.linting.flake8Enabled": false,
