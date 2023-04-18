@@ -121,7 +121,7 @@ class TSDF:
 
         # run marching cubes on CPU
         tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
-        print(tsdf_values_np)
+        print(f"tsdf value np: {tsdf_values_np}")
         vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np, level=0, allow_degenerate=False)
 
         vertices_indices = np.round(vertices).astype(int)
@@ -362,12 +362,12 @@ class TSDF:
         inside_dist = sampled_depth_84 - voxel_depth
 
         tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_outside = torch.clamp((outside_dist / self.truncation)-0.1, min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_inside = torch.clamp((inside_dist / self.truncation)+0.1, min=-1.0, max=1.0)  # [batch, 1, N]
+        tsdf_values_outside = torch.clamp(torch.Tensor((outside_dist / self.truncation)-0.1), min=-1.0, max=1.0)  # [batch, 1, N]
+        tsdf_values_inside = torch.clamp(torch.Tensor((inside_dist / self.truncation)+0.1), min=-1.0, max=1.0)  # [batch, 1, N]
 
-        tsdf_values = tsdf_values_outside + tsdf_values_surface + tsdf_values_inside
+        tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
 
-        valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (dist > -self.truncation)  # [batch, 1, N]
+        valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
 
         # Sequentially update the TSDF...
 
@@ -639,24 +639,26 @@ def export_tri_depth_tsdf(
     K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
     depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+
 
     CONSOLE.print("Integrating the Internal TSDF")
     for i in range(0, len(c2w), batch_size):
-        tsdf_inside.integrate_tri_tsdf(
+        tsdf_inside.integrate_tsdf(
             c2w[i : i + batch_size],
             K[i : i + batch_size],
             depth_images[i : i + batch_size],
-            depth_images_16[i : i + batch_size],
-            depth_images_84[i : i + batch_size],
             color_images=color_images[i : i + batch_size],
         )
     surfaceHyperparameter = 0.1
 
     CONSOLE.print("Computing Mesh")
+    ##print(f"tsdf_values: {tsdf_inside}")
 
     # mesh_surface = tsdf_surface.get_mesh()
-    # mesh_inside = tsdf_inside.get_mesh()
-    mesh_outside = tsdf_outside.get_mesh()
+    mesh_inside = tsdf_inside.get_mesh()
+    # mesh_outside = tsdf_outside.get_mesh()
 
     print(f"Inside Values: {tsdf_inside.values.shape}")
     # print(f"surface Values: {tsdf_surface.values.shape}")
