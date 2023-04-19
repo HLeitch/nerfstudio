@@ -645,10 +645,12 @@ def export_tri_depth_tsdf(
 
     CONSOLE.print("Integrating the Internal TSDF")
     for i in range(0, len(c2w), batch_size):
-        tsdf_inside.integrate_tsdf(
+        tsdf_inside.integrate_tri_tsdf(
             c2w[i : i + batch_size],
             K[i : i + batch_size],
             depth_images[i : i + batch_size],
+            depth_images_16[i : i + batch_size],
+            depth_images_84[i : i + batch_size],
             color_images=color_images[i : i + batch_size],
         )
     surfaceHyperparameter = 0.1
