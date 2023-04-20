@@ -361,48 +361,48 @@ class TSDF:
         outside_dist = sampled_depth_16 - voxel_depth
         inside_dist = sampled_depth_84 - voxel_depth
 
+        hyperparameter = 1
+
         tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_outside = torch.clamp(torch.Tensor((outside_dist / self.truncation)), min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_inside = torch.clamp(torch.Tensor((inside_dist / self.truncation)), min=-1.0, max=1.0)  # [batch, 1, N]
+        tsdf_values_outside = torch.clamp(torch.Tensor((outside_dist / self.truncation)-hyperparameter), min=-1.0, max=1.0)  # [batch, 1, N]
+        tsdf_values_inside = torch.clamp(torch.Tensor((inside_dist / self.truncation)+hyperparameter), min=-1.0, max=1.0)  # [batch, 1, N]
 
         tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
 
         valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
 
-        hyperparameter = 0.1
-
         # Sequentially update the TSDF...
-
         for i in range(batch_size):
             valid_points_i = valid_points[i]
             valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
 
             # the old values
-            old_tsdf_values_i = self.values[valid_points_i_shape] *0.1
+            old_tsdf_values_i = self.values[valid_points_i_shape]
             old_weights_i = self.weights[valid_points_i_shape]
 
             # the new values
             # TODO: let the new weight be configurable
 
             # Rescale to limits of [-0.1,0.1]
-            new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i]*0.1
-            new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]*0.1
-            new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]*0.1
+            new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i]
+            new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
+            new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
 
             ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
             ## can keep the weight clamps at 1.
-            surface_loss = (((new_tsdf_values_outside_i-hyperparameter)**2)+
+            surface_loss = (((new_tsdf_values_outside_i)**2)+
                             (new_tsdf_values_surface_i**2)+
-                            ((new_tsdf_values_inside_i+hyperparameter)**2))
+                            ((new_tsdf_values_inside_i)**2))
             
-            print(f"Surface Loss total: {surface_loss.sum()} Surface Loss amount ")
-            assert False
-            new_weights_i = 1.0
+            print(f"Surface Loss total: {surface_loss.sum()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+            print(f"Surface Loss elementwise: {surface_loss}")
+            
+            new_weights_i = (1.0/(1+surface_loss))
 
             total_weights = old_weights_i + new_weights_i
 
             self.values[valid_points_i_shape] = (
-                old_tsdf_values_i * old_weights_i + new_tsdf_values_i * new_weights_i
+                old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
             ) / total_weights
             self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
 
