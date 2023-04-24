@@ -20,6 +20,7 @@ TSDF utils.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -32,6 +33,7 @@ from rich.console import Console
 from skimage import measure
 from torchtyping import TensorType
 
+from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
 from nerfstudio.exporter.exporter_utils import Mesh, render_trajectory
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
@@ -364,8 +366,13 @@ class TSDF:
         hyperparameter = 1
 
         tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_outside = torch.clamp(torch.Tensor((outside_dist / self.truncation)-hyperparameter), min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_inside = torch.clamp(torch.Tensor((inside_dist / self.truncation)+hyperparameter), min=-1.0, max=1.0)  # [batch, 1, N]
+        tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
+        tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
+
+        # print(f"tsdf_values_surface: {tsdf_values_surface}")
+        # print(f"tsdf_values_outside: {tsdf_values_outside}")
+        # print(f"tsdf_values_inside: {tsdf_values_inside}")
+        
 
         tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
 
@@ -384,9 +391,14 @@ class TSDF:
             # TODO: let the new weight be configurable
 
             # Rescale to limits of [-0.1,0.1]
-            new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i]
+            new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
             new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
             new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
+
+            # print(f"Inside: {new_tsdf_values_inside_i}")
+            # print(f"Surface: {new_tsdf_values_surface_i}")
+            # print(f"Outside: {new_tsdf_values_outside_i}")
+
 
             ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
             ## can keep the weight clamps at 1.
@@ -394,12 +406,15 @@ class TSDF:
                             (new_tsdf_values_surface_i**2)+
                             ((new_tsdf_values_inside_i)**2))
             
-            print(f"Surface Loss total: {surface_loss.sum()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+            print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
             print(f"Surface Loss elementwise: {surface_loss}")
-            
-            new_weights_i = (1.0/(1+surface_loss))
+
+            ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
+            ## no weight is added. IMPLIMENT NEXT 
+            new_weights_i = torch.abs((5.01-surface_loss)/5)##(1.0/((0.1+surface_loss)))
 
             total_weights = old_weights_i + new_weights_i
+            print(f"Old Weights: {total_weights}")
 
             self.values[valid_points_i_shape] = (
                 old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
@@ -410,7 +425,7 @@ class TSDF:
                 old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
                 new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
                 self.colors[valid_points_i_shape] = (
-                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i
+                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
                 ) / total_weights[:, None]
 
 
@@ -523,8 +538,10 @@ def export_tri_depth_tsdf(
         bounding_box_min: Minimum coordinates of the bounding box.
         bounding_box_max: Maximum coordinates of the bounding box.
     """
+    start_state = pipeline.state_dict()
 
     device = pipeline.device
+    
 
     dataparser_outputs = pipeline.datamanager.train_dataset._dataparser_outputs  # pylint: disable=protected-access
 
@@ -564,12 +581,12 @@ def export_tri_depth_tsdf(
     ###################################################
     ###SURFACE###
     ###################################################
-
+    pipeline.load_state_dict(start_state)
     # camera per image supplied
     cameras = dataparser_outputs.cameras
-    print(f"num Cameras: {cameras.camera_to_worlds} ")
+    print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images = render_trajectory(
+    color_images, depth_images_50 = render_trajectory(
         pipeline,
         cameras,
         rgb_output_name=rgb_output_name,
@@ -578,30 +595,32 @@ def export_tri_depth_tsdf(
         disable_distortion=True,
     )
 
-    # # camera extrinsics and intrinsics
-    # c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
-    # # make c2w homogeneous
-    # c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
-    # c2w[:, 3, 3] = 1
-    # K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
-    # color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    # depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # camera extrinsics and intrinsics
+    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
+    # make c2w homogeneous
+    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
+    c2w[:, 3, 3] = 1
+    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
+    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
+    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
-    # CONSOLE.print("Integrating the Surface TSDF")
-    # for i in range(0, len(c2w), batch_size):
-    #     tsdf_surface.integrate_tsdf(
-    #         c2w[i : i + batch_size],
-    #         K[i : i + batch_size],
-    #         depth_images[i : i + batch_size],
-    #         color_images=color_images[i : i + batch_size],
-    #     )
+    CONSOLE.print("Integrating the Surface TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_surface.integrate_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images_50[i : i + batch_size],
+            color_images=color_images[i : i + batch_size],
+        )
 
     ###################################################
     ###OUTSIDE###
     ###################################################
-
+    pipeline.load_state_dict(start_state)
     # camera per image supplied
     cameras = dataparser_outputs.cameras
+    print(f"Cameras 2: {cameras.camera_to_worlds} ")
+
     # we turn off distortion when populating the TSDF
     color_images, depth_images_16 = render_trajectory(
         pipeline,
@@ -612,30 +631,31 @@ def export_tri_depth_tsdf(
         disable_distortion=True,
     )
 
-    # # camera extrinsics and intrinsics
-    # c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
-    # # make c2w homogeneous
-    # c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
-    # c2w[:, 3, 3] = 1
-    # K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
-    # color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    # depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # camera extrinsics and intrinsics
+    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
+    # make c2w homogeneous
+    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
+    c2w[:, 3, 3] = 1
+    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
+    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
-    # CONSOLE.print("Integrating the External TSDF")
-    # for i in range(0, len(c2w), batch_size):
-    #     tsdf_outside.integrate_tsdf(
-    #         c2w[i : i + batch_size],
-    #         K[i : i + batch_size],
-    #         depth_images[i : i + batch_size],
-    #         color_images=color_images[i : i + batch_size],
-    #     )
+    CONSOLE.print("Integrating the External TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_outside.integrate_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images_50[i : i + batch_size],
+            color_images=color_images[i : i + batch_size],
+        )
     ###################################################
     ###INSIDE###
     ###################################################
+    pipeline.load_state_dict(start_state)
 
     # camera per image supplied
     cameras = dataparser_outputs.cameras
-    print(f"num Cameras: {cameras.camera_to_worlds} ")
+    print(f"Cameras 3: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
     color_images, depth_images_84 = render_trajectory(
         pipeline,
@@ -653,17 +673,18 @@ def export_tri_depth_tsdf(
     c2w[:, 3, 3] = 1
     K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    depth_images = torch.tensor(np.array(depth_images), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
 
     CONSOLE.print("Integrating the Internal TSDF")
     for i in range(0, len(c2w), batch_size):
+        print("New Batch!")
         tsdf_inside.integrate_tri_tsdf(
             c2w[i : i + batch_size],
             K[i : i + batch_size],
-            depth_images[i : i + batch_size],
+            depth_images_50[i : i + batch_size],
             depth_images_16[i : i + batch_size],
             depth_images_84[i : i + batch_size],
             color_images=color_images[i : i + batch_size],
@@ -673,15 +694,15 @@ def export_tri_depth_tsdf(
     CONSOLE.print("Computing Mesh")
     ##print(f"tsdf_values: {tsdf_inside}")
 
-    # mesh_surface = tsdf_surface.get_mesh()
+    mesh_surface = tsdf_surface.get_mesh()
     mesh_inside = tsdf_inside.get_mesh()
-    # mesh_outside = tsdf_outside.get_mesh()
+    mesh_outside = tsdf_outside.get_mesh()
 
     print(f"Inside Values: {tsdf_inside.values.shape}")
-    # print(f"surface Values: {tsdf_surface.values.shape}")
-    # print(f"Outside Values: {tsdf_outside.values.shape}")
+    print(f"surface Values: {tsdf_surface.values.shape}")
+    print(f"Outside Values: {tsdf_outside.values.shape}")
 
-    # tsdf_surface.export_mesh(mesh_surface, filename=str(output_dir / "tsdf_mesh_surface.ply"))
+    tsdf_surface.export_mesh(mesh_surface, filename=str(output_dir / "tsdf_mesh_surface.ply"))
     tsdf_inside.export_mesh(mesh_inside, filename=str(output_dir / "tsdf_mesh_inside.ply"))
     tsdf_outside.export_mesh(mesh_outside, filename=str(output_dir / "tsdf_mesh_outside.ply"))
     CONSOLE.print("Saved TSDF Mesh")
