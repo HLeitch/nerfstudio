@@ -34,7 +34,11 @@ from skimage import measure
 from torchtyping import TensorType
 
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
-from nerfstudio.exporter.exporter_utils import Mesh, render_trajectory
+from nerfstudio.exporter.exporter_utils import (
+    Mesh,
+    render_trajectory,
+    render_trajectory_tri_tsdf,
+)
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
 
@@ -557,12 +561,10 @@ def export_tri_depth_tsdf(
     else:
         raise ValueError("Resolution must be an int or a list.")
     tsdf_surface = TSDF.from_aabb(aabb, volume_dims=volume_dims)
-    tsdf_outside = TSDF.from_aabb(aabb, volume_dims=volume_dims)
-    tsdf_inside = TSDF.from_aabb(aabb, volume_dims=volume_dims)
+
     # move TSDF to device
     tsdf_surface.to(device)
-    tsdf_outside.to(device)
-    tsdf_inside.to(device)
+
 
     ##Use a new instance of the nerfacto model with 3 depth samplers in ray outputs.
     old_model = pipeline._model
@@ -572,25 +574,17 @@ def export_tri_depth_tsdf(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
     )
 
-    pipeline.model.load_state_dict(old_model_states)
-
-    pipeline.model.cuda()
-
-    ###3 SDFs are trained.
-
-    ###################################################
-    ###SURFACE###
-    ###################################################
-    pipeline.load_state_dict(start_state)
     # camera per image supplied
     cameras = dataparser_outputs.cameras
     print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images_50 = render_trajectory(
+    color_images, depth_images_50, depth_images_16, depth_images_84 = render_trajectory_tri_tsdf(
         pipeline,
         cameras,
         rgb_output_name=rgb_output_name,
-        depth_output_name=depth_output_name,
+        surface_depth_output_name=depth_output_name,
+        outside_depth_output_name= "depth_16",
+        inside_depth_output_name= "depth_84",
         rendered_resolution_scaling_factor=1.0 / downscale_factor,
         disable_distortion=True,
     )
@@ -603,85 +597,13 @@ def export_tri_depth_tsdf(
     K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
     depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-
-    CONSOLE.print("Integrating the Surface TSDF")
-    for i in range(0, len(c2w), batch_size):
-        tsdf_surface.integrate_tsdf(
-            c2w[i : i + batch_size],
-            K[i : i + batch_size],
-            depth_images_50[i : i + batch_size],
-            color_images=color_images[i : i + batch_size],
-        )
-
-    ###################################################
-    ###OUTSIDE###
-    ###################################################
-    pipeline.load_state_dict(start_state)
-    # camera per image supplied
-    cameras = dataparser_outputs.cameras
-    print(f"Cameras 2: {cameras.camera_to_worlds} ")
-
-    # we turn off distortion when populating the TSDF
-    color_images, depth_images_16 = render_trajectory(
-        pipeline,
-        cameras,
-        rgb_output_name=rgb_output_name,
-        depth_output_name="depth_16",
-        rendered_resolution_scaling_factor=1.0 / downscale_factor,
-        disable_distortion=True,
-    )
-
-    # camera extrinsics and intrinsics
-    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
-    # make c2w homogeneous
-    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
-    c2w[:, 3, 3] = 1
-    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
-    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
     depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-
-    CONSOLE.print("Integrating the External TSDF")
-    for i in range(0, len(c2w), batch_size):
-        tsdf_outside.integrate_tsdf(
-            c2w[i : i + batch_size],
-            K[i : i + batch_size],
-            depth_images_50[i : i + batch_size],
-            color_images=color_images[i : i + batch_size],
-        )
-    ###################################################
-    ###INSIDE###
-    ###################################################
-    pipeline.load_state_dict(start_state)
-
-    # camera per image supplied
-    cameras = dataparser_outputs.cameras
-    print(f"Cameras 3: {cameras.camera_to_worlds} ")
-    # we turn off distortion when populating the TSDF
-    color_images, depth_images_84 = render_trajectory(
-        pipeline,
-        cameras,
-        rgb_output_name=rgb_output_name,
-        depth_output_name="depth_84",
-        rendered_resolution_scaling_factor=1.0 / downscale_factor,
-        disable_distortion=True,
-    )
-
-    # camera extrinsics and intrinsics
-    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
-    # make c2w homogeneous
-    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
-    c2w[:, 3, 3] = 1
-    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
-    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
 
-    CONSOLE.print("Integrating the Internal TSDF")
+    CONSOLE.print("Integrating the Surface TSDF")
     for i in range(0, len(c2w), batch_size):
-        print("New Batch!")
-        tsdf_inside.integrate_tri_tsdf(
+        tsdf_surface.integrate_tri_tsdf(
             c2w[i : i + batch_size],
             K[i : i + batch_size],
             depth_images_50[i : i + batch_size],
@@ -689,20 +611,16 @@ def export_tri_depth_tsdf(
             depth_images_84[i : i + batch_size],
             color_images=color_images[i : i + batch_size],
         )
+
     surfaceHyperparameter = 0.1
 
     CONSOLE.print("Computing Mesh")
-    ##print(f"tsdf_values: {tsdf_inside}")
+
 
     mesh_surface = tsdf_surface.get_mesh()
-    mesh_inside = tsdf_inside.get_mesh()
-    mesh_outside = tsdf_outside.get_mesh()
 
-    print(f"Inside Values: {tsdf_inside.values.shape}")
     print(f"surface Values: {tsdf_surface.values.shape}")
-    print(f"Outside Values: {tsdf_outside.values.shape}")
 
     tsdf_surface.export_mesh(mesh_surface, filename=str(output_dir / "tsdf_mesh_surface.ply"))
-    tsdf_inside.export_mesh(mesh_inside, filename=str(output_dir / "tsdf_mesh_inside.ply"))
-    tsdf_outside.export_mesh(mesh_outside, filename=str(output_dir / "tsdf_mesh_outside.ply"))
+
     CONSOLE.print("Saved TSDF Mesh")

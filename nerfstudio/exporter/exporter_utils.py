@@ -376,6 +376,75 @@ def render_trajectory(
             depths.append(outputs[depth_output_name].cpu().numpy())
     return images, depths
 
+def render_trajectory_tri_tsdf(
+    pipeline: Pipeline,
+    cameras: Cameras,
+    rgb_output_name: str,
+    surface_depth_output_name: str,
+    outside_depth_output_name: str,
+    inside_depth_output_name: str,
+    rendered_resolution_scaling_factor: float = 1.0,
+    disable_distortion: bool = False,
+) -> Tuple[List[np.ndarray], List[np.ndarray],List[np.ndarray], List[np.ndarray]]:
+    """Helper function to create a video of a trajectory.
+
+    Args:
+        pipeline: Pipeline to evaluate with.
+        cameras: Cameras to render.
+        rgb_output_name: Name of the RGB output.
+        depth_output_name: Name of the depth output.
+        rendered_resolution_scaling_factor: Scaling factor to apply to the camera image resolution.
+        disable_distortion: Whether to disable distortion.
+
+    Returns:
+        List of rgb images, list of depth images.
+    """
+    images = []
+    depths_surface = []
+    depths_outside = []
+    depths_inside = []
+    cameras.rescale_output_resolution(rendered_resolution_scaling_factor)
+
+    progress = Progress(
+        TextColumn(":cloud: Computing rgb and depth images :cloud:"),
+        BarColumn(),
+        TaskProgressColumn(show_speed=True),
+        ItersPerSecColumn(suffix="fps"),
+        TimeRemainingColumn(elapsed_when_finished=True, compact=True),
+    )
+    with progress:
+        for camera_idx in progress.track(range(cameras.size), description=""):
+            camera_ray_bundle = cameras.generate_rays(
+                camera_indices=camera_idx, disable_distortion=disable_distortion
+            ).to(pipeline.device)
+            with torch.no_grad():
+                outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
+            if rgb_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --rgb_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if surface_depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {surface_depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if outside_depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {outside_depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if inside_depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {inside_depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            images.append(outputs[rgb_output_name].cpu().numpy())
+            depths_surface.append(outputs[surface_depth_output_name].cpu().numpy())
+            depths_outside.append(outputs[outside_depth_output_name].cpu().numpy())
+            depths_inside.append(outputs[inside_depth_output_name].cpu().numpy())
+
+    return images, depths_surface, depths_outside, depths_inside
 
 def collect_camera_poses_for_dataset(dataset: Optional[InputDataset]) -> List[Dict[str, Any]]:
     """Collects rescaled, translated and optimised camera poses for a dataset.
