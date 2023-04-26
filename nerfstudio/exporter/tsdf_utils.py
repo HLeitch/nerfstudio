@@ -382,8 +382,7 @@ class TSDF:
         tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
         tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
 
-        print(f"tsdf_values_surface: {tsdf_values_surface.shape()}")
-        assert False
+        print(f"tsdf_values_surface: {tsdf_values_surface.shape}")
         # print(f"tsdf_values_outside: {tsdf_values_outside}")
         # print(f"tsdf_values_inside: {tsdf_values_inside}")
         
@@ -419,7 +418,7 @@ class TSDF:
                             (new_tsdf_values_surface_i**2)+
                             ((new_tsdf_values_inside_i)**2))
             
-            print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+            #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
             print(f"Surface Loss elementwise: {surface_loss}")
 
             ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
@@ -575,9 +574,6 @@ def export_tri_depth_tsdf(
     # move TSDF to device
     tsdf_surface.to(device)
 
-    ## prevent model change causing confusion and mismatching device
-
-    
     print(f"Device before model assignment: {pipeline.device}")
 
 
@@ -587,6 +583,11 @@ def export_tri_depth_tsdf(
     pipeline._model = NerfactoModelTriDepth(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
     )
+
+    ## prevent model change causing confusion and mismatching device. Assigning a new model resets 
+    ## device to cpu. 
+    pipeline.cuda()
+    
 
     # camera per image supplied
     cameras = dataparser_outputs.cameras
