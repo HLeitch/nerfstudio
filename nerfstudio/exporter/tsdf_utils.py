@@ -576,9 +576,8 @@ def export_tri_depth_tsdf(
     tsdf_surface.to(device)
 
     ## prevent model change causing confusion and mismatching device
-    state = dict()
-    pipeline._save_to_state_dict(state,"",True)
- 
+
+    
     print(f"Device before model assignment: {pipeline.device}")
 
 

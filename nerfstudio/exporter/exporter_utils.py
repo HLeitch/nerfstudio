@@ -420,7 +420,7 @@ def render_trajectory_tri_tsdf(
             camera_ray_bundle = cameras.generate_rays(
                 camera_indices=camera_idx, disable_distortion=disable_distortion).to(pipeline.device)
             with torch.no_grad():
-                outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle.to(pipeline.device))
+                outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
             if rgb_output_name not in outputs:
                 CONSOLE.rule("Error", style="red")
                 CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")
