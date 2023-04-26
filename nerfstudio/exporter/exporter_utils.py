@@ -399,6 +399,8 @@ def render_trajectory_tri_tsdf(
     Returns:
         List of rgb images, list of depth images.
     """
+    print(f"Device within function: {pipeline.device}")
+
     images = []
     depths_surface = []
     depths_outside = []
@@ -412,13 +414,13 @@ def render_trajectory_tri_tsdf(
         ItersPerSecColumn(suffix="fps"),
         TimeRemainingColumn(elapsed_when_finished=True, compact=True),
     )
+    print(f"render trajectory device = {pipeline.device}")
     with progress:
         for camera_idx in progress.track(range(cameras.size), description=""):
             camera_ray_bundle = cameras.generate_rays(
-                camera_indices=camera_idx, disable_distortion=disable_distortion
-            ).to(pipeline.device)
+                camera_indices=camera_idx, disable_distortion=disable_distortion).to(pipeline.device)
             with torch.no_grad():
-                outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
+                outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle.to(pipeline.device))
             if rgb_output_name not in outputs:
                 CONSOLE.rule("Error", style="red")
                 CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")

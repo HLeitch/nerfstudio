@@ -49,6 +49,7 @@ CONSOLE = Console(width=120)
 class TSDF:
     """
     Class for creating TSDFs.
+    Modified to include normals. These are not mandatory and should not break the original functions.
     """
 
     voxel_coords: TensorType[3, "xdim", "ydim", "zdim"]
@@ -59,6 +60,8 @@ class TSDF:
     """TSDF weights for each voxel."""
     colors: TensorType["xdim", "ydim", "zdim", 3]
     """TSDF colors for each voxel."""
+    normals: TensorType["xdim", "ydim", "zdim", 3]
+    """TSDF normals for each voxel."""
     voxel_size: TensorType[3]
     """Size of each voxel in the TSDF. [x, y, z] size."""
     origin: TensorType[3]
@@ -76,6 +79,7 @@ class TSDF:
         self.values = self.values.to(device)
         self.weights = self.weights.to(device)
         self.colors = self.colors.to(device)
+        self.normals = self.normals.to(device)
         self.voxel_size = self.voxel_size.to(device)
         self.origin = self.origin.to(device)
         return self
@@ -115,10 +119,12 @@ class TSDF:
         values = -torch.ones(volume_dims.tolist())
         weights = torch.zeros(volume_dims.tolist())
         colors = torch.zeros(volume_dims.tolist() + [3])
+        normals = torch.zeros(volume_dims.tolist() + [3])
+
 
         # TODO: move to device
 
-        return TSDF(voxel_coords, values, weights, colors, voxel_size, origin)
+        return TSDF(voxel_coords, values, weights, colors, normals, voxel_size, origin)
 
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
@@ -367,13 +373,17 @@ class TSDF:
         outside_dist = sampled_depth_16 - voxel_depth
         inside_dist = sampled_depth_84 - voxel_depth
 
+        ## NerfMeshing adds a value to the outside and inside values to create the loss function. The further outside/inside are
+        ## from 1/-1 the larger the loss value so the less affect the sample has on the final tsdf. 
+        ## Ideal case outside/surface/inside ---> 1/0/-1 tsdf value therefore 0/0/0 loss value.
         hyperparameter = 1
 
         tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
         tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
         tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
 
-        # print(f"tsdf_values_surface: {tsdf_values_surface}")
+        print(f"tsdf_values_surface: {tsdf_values_surface.shape()}")
+        assert False
         # print(f"tsdf_values_outside: {tsdf_values_outside}")
         # print(f"tsdf_values_inside: {tsdf_values_inside}")
         
@@ -387,6 +397,10 @@ class TSDF:
             valid_points_i = valid_points[i]
             valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
 
+            ######################
+            #######SURFACE########
+            ######################
+
             # the old values
             old_tsdf_values_i = self.values[valid_points_i_shape]
             old_weights_i = self.weights[valid_points_i_shape]
@@ -398,11 +412,6 @@ class TSDF:
             new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
             new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
             new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
-
-            # print(f"Inside: {new_tsdf_values_inside_i}")
-            # print(f"Surface: {new_tsdf_values_surface_i}")
-            # print(f"Outside: {new_tsdf_values_outside_i}")
-
 
             ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
             ## can keep the weight clamps at 1.
@@ -424,6 +433,8 @@ class TSDF:
                 old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
             ) / total_weights
             self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
+
+
 
             if color_images is not None:
                 old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
@@ -542,10 +553,9 @@ def export_tri_depth_tsdf(
         bounding_box_min: Minimum coordinates of the bounding box.
         bounding_box_max: Maximum coordinates of the bounding box.
     """
-    start_state = pipeline.state_dict()
 
     device = pipeline.device
-    
+    print(f"Device: {pipeline.device}")
 
     dataparser_outputs = pipeline.datamanager.train_dataset._dataparser_outputs  # pylint: disable=protected-access
 
@@ -565,10 +575,15 @@ def export_tri_depth_tsdf(
     # move TSDF to device
     tsdf_surface.to(device)
 
+    ## prevent model change causing confusion and mismatching device
+    state = dict()
+    pipeline._save_to_state_dict(state,"",True)
+ 
+    print(f"Device before model assignment: {pipeline.device}")
+
 
     ##Use a new instance of the nerfacto model with 3 depth samplers in ray outputs.
     old_model = pipeline._model
-    old_model_states = old_model.state_dict()
 
     pipeline._model = NerfactoModelTriDepth(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
@@ -576,7 +591,7 @@ def export_tri_depth_tsdf(
 
     # camera per image supplied
     cameras = dataparser_outputs.cameras
-    print(f"Cameras 1: {cameras.camera_to_worlds} ")
+    print(f"Device pre function: {pipeline.device}")
     # we turn off distortion when populating the TSDF
     color_images, depth_images_50, depth_images_16, depth_images_84 = render_trajectory_tri_tsdf(
         pipeline,

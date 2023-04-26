@@ -712,7 +712,7 @@ class ExportMarchingTetTSDFMesh(Exporter):
             self.output_dir.mkdir(parents=True)
 
         _, pipeline, _ = eval_setup(self.load_config)
-
+        print(f"Device = {pipeline.device}")
         tsdf_utils.export_tri_depth_tsdf(
             pipeline,
             self.output_dir,
