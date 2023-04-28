@@ -382,9 +382,9 @@ class TSDF:
         tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
         tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
 
-        print(f"tsdf_values_surface: {tsdf_values_surface.shape}")
-        # print(f"tsdf_values_outside: {tsdf_values_outside}")
-        # print(f"tsdf_values_inside: {tsdf_values_inside}")
+        print(f"tsdf_values_surface: {tsdf_values_surface}")
+        print(f"tsdf_values_outside: {tsdf_values_outside}")
+        print(f"tsdf_values_inside: {tsdf_values_inside}")
         
 
         tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
@@ -416,18 +416,20 @@ class TSDF:
             ## can keep the weight clamps at 1.
             surface_loss = (((new_tsdf_values_outside_i)**2)+
                             (new_tsdf_values_surface_i**2)+
-                            ((new_tsdf_values_inside_i)**2)).cuda()
+                            ((new_tsdf_values_inside_i)**2))
             
             print(f"Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+            print(f"Surface Loss: {surface_loss}")
 
             ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
             ## no weight is added.
-            new_weights_i = 1##(1.0/((0.1+surface_loss)))##torch.abs((5.0001-surface_loss)/5).cuda()##
+            new_weights_i = torch.abs((5.0001-surface_loss)/5).cuda()##1## (1.0/((0.0001+(surface_loss**2))))
             ##print(f"New Weights: avg: {new_weights_i.sum()/new_weights_i.numel()}.")
             print(f"New Weights: {new_weights_i}")
 
             total_weights = old_weights_i + new_weights_i
             print(f"Old Weights: {total_weights}")
+            print(f"\n")
 
             self.values[valid_points_i_shape] = (
                 old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
@@ -440,7 +442,7 @@ class TSDF:
                 old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
                 new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
                 self.colors[valid_points_i_shape] = (
-                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i##[:, None]
+                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
                 ) / total_weights[:, None]
 
 
@@ -584,6 +586,7 @@ def export_tri_depth_tsdf(
     pipeline._model = NerfactoModelTriDepth(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
     )
+    pipeline.model.cuda()
 
     ## prevent model change causing confusion and mismatching device. Assigning a new model resets 
     ## device to cpu. 
@@ -617,25 +620,25 @@ def export_tri_depth_tsdf(
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
 
-    # CONSOLE.print("Integrating the Surface TSDF")
+    CONSOLE.print("Integrating the Surface TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_surface.integrate_tri_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images_50[i : i + batch_size],
+            depth_images_16[i : i + batch_size],
+            depth_images_84[i : i + batch_size],
+            color_images=color_images[i : i + batch_size],
+        )
+
+    # CONSOLE.print("Integrating the TSDF")
     # for i in range(0, len(c2w), batch_size):
-    #     tsdf_surface.integrate_tri_tsdf(
+    #     tsdf_surface.integrate_tsdf(
     #         c2w[i : i + batch_size],
     #         K[i : i + batch_size],
-    #         depth_images_50[i : i + batch_size],
-    #         depth_images_16[i : i + batch_size],
     #         depth_images_84[i : i + batch_size],
     #         color_images=color_images[i : i + batch_size],
     #     )
-
-    CONSOLE.print("Integrating the TSDF")
-    for i in range(0, len(c2w), batch_size):
-        tsdf_surface.integrate_tsdf(
-            c2w[i : i + batch_size],
-            K[i : i + batch_size],
-            depth_images_16[i : i + batch_size],
-            color_images=color_images[i : i + batch_size],
-        )
 
 
     surfaceHyperparameter = 0.1
