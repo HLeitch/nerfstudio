@@ -45,6 +45,7 @@ from nerfstudio.pipelines.base_pipeline import Pipeline
 CONSOLE = Console(width=120)
 
 
+
 @dataclass
 class TSDF:
     """
@@ -60,8 +61,8 @@ class TSDF:
     """TSDF weights for each voxel."""
     colors: TensorType["xdim", "ydim", "zdim", 3]
     """TSDF colors for each voxel."""
-    normals: TensorType["xdim", "ydim", "zdim", 3]
-    """TSDF normals for each voxel."""
+    # normals: TensorType["xdim", "ydim", "zdim", 3]
+    # """TSDF normals for each voxel."""
     voxel_size: TensorType[3]
     """Size of each voxel in the TSDF. [x, y, z] size."""
     origin: TensorType[3]
@@ -79,7 +80,7 @@ class TSDF:
         self.values = self.values.to(device)
         self.weights = self.weights.to(device)
         self.colors = self.colors.to(device)
-        self.normals = self.normals.to(device)
+        # self.normals = self.normals.to(device)
         self.voxel_size = self.voxel_size.to(device)
         self.origin = self.origin.to(device)
         return self
@@ -119,7 +120,7 @@ class TSDF:
         values = -torch.ones(volume_dims.tolist())
         weights = torch.zeros(volume_dims.tolist())
         colors = torch.zeros(volume_dims.tolist() + [3])
-        normals = torch.zeros(volume_dims.tolist() + [3])
+        # normals = torch.zeros(volume_dims.tolist() + [3])
 
 
         # TODO: move to device
@@ -432,7 +433,7 @@ class TSDF:
             print(f"\n")
 
             self.values[valid_points_i_shape] = (
-                old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
+                old_tsdf_values_i * old_weights_i + tsdf_values[i][valid_points_i] * new_weights_i
             ) / total_weights
             self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
 
@@ -445,7 +446,7 @@ class TSDF:
                     old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
                 ) / total_weights[:, None]
 
-
+@dataclass
 def export_tsdf_mesh(
     pipeline: Pipeline,
     output_dir: Path,
@@ -595,6 +596,7 @@ def export_tri_depth_tsdf(
 
     # camera per image supplied
     cameras = dataparser_outputs.cameras
+    print(f"Camera World Position: {cameras.camera_to_worlds}")
     print(f"Device pre function: {pipeline.device}")
     # we turn off distortion when populating the TSDF
     color_images, depth_images_50, depth_images_16, depth_images_84 = render_trajectory_tri_tsdf(
@@ -620,25 +622,25 @@ def export_tri_depth_tsdf(
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
 
-    CONSOLE.print("Integrating the Surface TSDF")
-    for i in range(0, len(c2w), batch_size):
-        tsdf_surface.integrate_tri_tsdf(
-            c2w[i : i + batch_size],
-            K[i : i + batch_size],
-            depth_images_50[i : i + batch_size],
-            depth_images_16[i : i + batch_size],
-            depth_images_84[i : i + batch_size],
-            color_images=color_images[i : i + batch_size],
-        )
-
-    # CONSOLE.print("Integrating the TSDF")
+    # CONSOLE.print("Integrating the Surface TSDF")
     # for i in range(0, len(c2w), batch_size):
-    #     tsdf_surface.integrate_tsdf(
+    #     tsdf_surface.integrate_tri_tsdf(
     #         c2w[i : i + batch_size],
     #         K[i : i + batch_size],
+    #         depth_images_50[i : i + batch_size],
+    #         depth_images_16[i : i + batch_size],
     #         depth_images_84[i : i + batch_size],
     #         color_images=color_images[i : i + batch_size],
     #     )
+
+    CONSOLE.print("Integrating the TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_surface.integrate_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images_50[i : i + batch_size],
+            color_images=color_images[i : i + batch_size],
+        )
 
 
     surfaceHyperparameter = 0.1
