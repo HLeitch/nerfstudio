@@ -28,6 +28,7 @@ import numpy as np
 import open3d as o3d
 import pymeshlab
 import torch
+from matplotlib import pyplot as plt
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -373,6 +374,12 @@ def render_trajectory(
                 CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
                 sys.exit(1)
             images.append(outputs[rgb_output_name].cpu().numpy())
+
+            print(f" {outputs[rgb_output_name].shape}")
+
+            plt.imshow(outputs[rgb_output_name].cpu().numpy())
+            plt.show()
+
             depths.append(outputs[depth_output_name].cpu().numpy())
     return images, depths
 
@@ -387,7 +394,6 @@ def render_trajectory_tri_tsdf(
     disable_distortion: bool = False,
 ) -> Tuple[List[np.ndarray], List[np.ndarray],List[np.ndarray], List[np.ndarray]]:
     """Helper function to create a video of a trajectory.
-
     Args:
         pipeline: Pipeline to evaluate with.
         cameras: Cameras to render.
@@ -440,6 +446,10 @@ def render_trajectory_tri_tsdf(
                 CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
                 sys.exit(1)
             images.append(outputs[rgb_output_name].cpu().numpy())
+
+            # plt.imshow(outputs[rgb_output_name].cpu().numpy())
+            # plt.show()
+
             depths_surface.append(outputs[surface_depth_output_name].cpu().numpy())
             depths_outside.append(outputs[outside_depth_output_name].cpu().numpy())
             depths_inside.append(outputs[inside_depth_output_name].cpu().numpy())

@@ -573,9 +573,17 @@ def export_tri_depth_tsdf(
     pipeline._model = NerfactoModelTriDepth(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
     )
+    print(old_model_states)
+    pipeline.model.load_state_dict(old_model_states, True)
+    pipeline.model.collider = old_model.collider
+    pipeline.model._modules = old_model._modules
+    pipeline.model._buffers = old_model._buffers
+    pipeline.model._parameters = old_model._parameters
+    pipeline.model.field = old_model.field
 
+    pipeline.cuda()
     # camera per image supplied
-    cameras = dataparser_outputs.cameras
+    cameras = dataparser_outputs.cameras.to(device)
     print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
     color_images, depth_images_50, depth_images_16, depth_images_84 = render_trajectory_tri_tsdf(
