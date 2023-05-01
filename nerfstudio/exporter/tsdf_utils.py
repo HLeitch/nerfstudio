@@ -400,9 +400,11 @@ class TSDF:
             new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
 
             # print(f"Inside: {new_tsdf_values_inside_i}")
-            # print(f"Surface: {new_tsdf_values_surface_i}")
+            #print(f"SurfaceAll: {tsdf_values_surface.shape}")
+            print(f"Surface: {valid_points_i}")
             # print(f"Outside: {new_tsdf_values_outside_i}")
 
+            assert False
 
             ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
             ## can keep the weight clamps at 1.
@@ -410,12 +412,12 @@ class TSDF:
                             (new_tsdf_values_surface_i**2)+
                             ((new_tsdf_values_inside_i)**2))
             
-            print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+            #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
             print(f"Surface Loss elementwise: {surface_loss}")
 
             ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
             ## no weight is added. IMPLIMENT NEXT 
-            new_weights_i = torch.abs((5.01-surface_loss)/5)##(1.0/((0.1+surface_loss)))
+            new_weights_i =(1.0/((0.1+surface_loss))) ##torch.abs((5.01-surface_loss)/5)##
 
             total_weights = old_weights_i + new_weights_i
             print(f"Old Weights: {total_weights}")
@@ -573,8 +575,10 @@ def export_tri_depth_tsdf(
     pipeline._model = NerfactoModelTriDepth(
         config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
     )
-    print(old_model_states)
+    ##This is vital. Allows the new model to read outputs correctly. Prevents the massively blurry input images problem
     pipeline.model.load_state_dict(old_model_states, True)
+
+    ## Transplanting old varibles to new model. May be worth seeing what is necessary however will take some time. 
     pipeline.model.collider = old_model.collider
     pipeline.model._modules = old_model._modules
     pipeline.model._buffers = old_model._buffers
@@ -584,7 +588,7 @@ def export_tri_depth_tsdf(
     pipeline.cuda()
     # camera per image supplied
     cameras = dataparser_outputs.cameras.to(device)
-    print(f"Cameras 1: {cameras.camera_to_worlds} ")
+    #print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
     color_images, depth_images_50, depth_images_16, depth_images_84 = render_trajectory_tri_tsdf(
         pipeline,

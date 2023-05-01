@@ -719,7 +719,7 @@ class ExportMarchingTetTSDFMesh(Exporter):
             self.downscale_factor,
             self.depth_output_name,
             self.rgb_output_name,
-            self.resolution,
+            [256,256,256],##self.resolution,
             self.batch_size,
             use_bounding_box=self.use_bounding_box,
             bounding_box_min=self.bounding_box_min,
