@@ -368,7 +368,7 @@ class TSDF:
         inside_dist = sampled_depth_84 - voxel_depth
 
         hyperparameter = 1
-
+        print(surface_dist)
         tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
         tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
         tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
@@ -404,7 +404,6 @@ class TSDF:
             print(f"Surface: {valid_points_i}")
             # print(f"Outside: {new_tsdf_values_outside_i}")
 
-            assert False
 
             ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
             ## can keep the weight clamps at 1.
@@ -590,7 +589,7 @@ def export_tri_depth_tsdf(
     cameras = dataparser_outputs.cameras.to(device)
     #print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84 = render_trajectory_tri_tsdf(
+    color_images, depth_images_50, depth_images_16, depth_images_84, rays = render_trajectory_tri_tsdf(
         pipeline,
         cameras,
         rgb_output_name=rgb_output_name,
@@ -600,7 +599,7 @@ def export_tri_depth_tsdf(
         rendered_resolution_scaling_factor=1.0 / downscale_factor,
         disable_distortion=True,
     )
-
+    print(rays)
     # camera extrinsics and intrinsics
     c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
     # make c2w homogeneous
