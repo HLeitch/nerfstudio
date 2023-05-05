@@ -392,7 +392,7 @@ def render_trajectory_tri_tsdf(
     inside_depth_output_name: str,
     rendered_resolution_scaling_factor: float = 1.0,
     disable_distortion: bool = False,
-) -> Tuple[List[np.ndarray], List[np.ndarray],List[np.ndarray], List[np.ndarray], RayBundle]:
+) -> Tuple[List[np.ndarray], List[np.ndarray],List[np.ndarray], List[np.ndarray], List[np.ndarray],List[np.ndarray],List[np.ndarray]]:
     """Helper function to create a video of a trajectory.
     Args:
         pipeline: Pipeline to evaluate with.
@@ -409,7 +409,10 @@ def render_trajectory_tri_tsdf(
     depths_surface = []
     depths_outside = []
     depths_inside = []
-    rays = RayBundle
+    ray_origins = []
+    ray_directions = []
+    ray_cam_ind = []
+
     cameras.rescale_output_resolution(rendered_resolution_scaling_factor)
 
     progress = Progress(
@@ -455,22 +458,23 @@ def render_trajectory_tri_tsdf(
             depths_outside.append(outputs[outside_depth_output_name].cpu().numpy())
             depths_inside.append(outputs[inside_depth_output_name].cpu().numpy())
 
-            if rays == []:
-                rays = camera_ray_bundle
-            else:
-                rays = Add_RayBundle(rays, camera_ray_bundle)
+            ray_origins.append(camera_ray_bundle.origins.cpu().numpy())
+            ray_directions.append(camera_ray_bundle.origins.cpu().numpy())
+            ray_cam_ind.append(camera_ray_bundle.camera_indices.cpu().numpy())
 
-    return images, depths_surface, depths_outside, depths_inside, rays
 
-def Add_RayBundle(original_bundle, new_bundle):
-    cam_ind = torch.cat([original_bundle.camera_indices,new_bundle.camera_indices],0)
+    return images, depths_surface, depths_outside, depths_inside, ray_origins,ray_directions,ray_cam_ind
+
+def Add_RayBundle(original_bundle:RayBundle, new_bundle:RayBundle):
+    cam_ind = torch.cat([torch.tensor(original_bundle.camera_indices),torch.tensor(new_bundle.camera_indices)],0)
     dirs = torch.cat([original_bundle.directions,new_bundle.directions],0)
-    nears = torch.cat([original_bundle.nears,new_bundle.nears],0)
-    fars = torch.cat([original_bundle.fars,new_bundle.fars],0)
+    ## Nears and Fars contain nothing
+    # nears = torch.cat([original_bundle.nears, new_bundle.nears],0)
+    # fars = torch.cat([torch.tensor(original_bundle.fars),torch.tensor(new_bundle.fars)],0)
     origins = torch.cat([original_bundle.origins,new_bundle.origins],0)
     pixel_area = torch.cat([original_bundle.pixel_area,new_bundle.pixel_area],0)
 
-    return RayBundle(origins,dirs,pixel_area,cam_ind,nears,fars)
+    return RayBundle(origins,dirs,pixel_area,cam_ind)
 
 
 def collect_camera_poses_for_dataset(dataset: Optional[InputDataset]) -> List[Dict[str, Any]]:

@@ -589,7 +589,7 @@ def export_tri_depth_tsdf(
     cameras = dataparser_outputs.cameras.to(device)
     #print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84, rays = render_trajectory_tri_tsdf(
+    color_images, depth_images_50, depth_images_16, depth_images_84, rays_origins,rays_directions,rays_cam_inds = render_trajectory_tri_tsdf(
         pipeline,
         cameras,
         rgb_output_name=rgb_output_name,
@@ -600,6 +600,7 @@ def export_tri_depth_tsdf(
         disable_distortion=True,
     )
     print(rays)
+
     # camera extrinsics and intrinsics
     c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
     # make c2w homogeneous
@@ -610,6 +611,15 @@ def export_tri_depth_tsdf(
     depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    print(depth_images_50.shape)
+
+    
+    ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+
+    ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    
+    assert False
 
 
     CONSOLE.print("Integrating the Surface TSDF")
