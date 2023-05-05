@@ -285,6 +285,9 @@ class TSDF:
         depth_images: TensorType["batch", 1, "height", "width"],
         depth_images_outside: TensorType["batch", 1, "height", "width"],
         depth_images_inside: TensorType["batch", 1, "height", "width"],
+        ray_origins: TensorType["batch", 3, "height", "width"],
+        ray_directions: TensorType["batch", 1, "height", "width"],
+        ray_cam_inds: TensorType["batch", 1, "height", "width"],
         color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
         mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
     ):
@@ -355,6 +358,11 @@ class TSDF:
         )  # [batch, N, 1]
         sampled_depth_84 = sampled_depth_84.squeeze(2)  # [batch, 1, N]
 
+        sampled_origins = F.grid_sample(
+            input=ray_origins, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
+        )  # [batch, N, 1]
+        sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
+
 
         # colors
         if color_images is not None:
@@ -373,7 +381,8 @@ class TSDF:
         tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
         tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
 
-        # print(f"tsdf_values_surface: {tsdf_values_surface}")
+        print(f"pre gridsample: depths{depth_images}\n origins{ray_origins}")
+        print(f"post gridsample: depths{sampled_depth}\n origins{sampled_origins}")
         # print(f"tsdf_values_outside: {tsdf_values_outside}")
         # print(f"tsdf_values_inside: {tsdf_values_inside}")
         
@@ -398,6 +407,11 @@ class TSDF:
             new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
             new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
             new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
+
+            ##implimentation transplanted from colour processing below.
+            sampled_origins_i = sampled_origins[i][:, valid_points_i.squeeze(0)].permute(1,0)
+
+            print(f"Single Values? {new_tsdf_values_surface_i[0]}, {sampled_origins_i[0]}")
 
             # print(f"Inside: {new_tsdf_values_inside_i}")
             #print(f"SurfaceAll: {tsdf_values_surface.shape}")
@@ -589,7 +603,7 @@ def export_tri_depth_tsdf(
     cameras = dataparser_outputs.cameras.to(device)
     #print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84, rays_origins,rays_directions,rays_cam_inds = render_trajectory_tri_tsdf(
+    color_images, depth_images_50, depth_images_16, depth_images_84, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
         pipeline,
         cameras,
         rgb_output_name=rgb_output_name,
@@ -599,8 +613,6 @@ def export_tri_depth_tsdf(
         rendered_resolution_scaling_factor=1.0 / downscale_factor,
         disable_distortion=True,
     )
-    print(rays)
-
     # camera extrinsics and intrinsics
     c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
     # make c2w homogeneous
@@ -615,11 +627,8 @@ def export_tri_depth_tsdf(
 
     
     ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-
     ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    
-    assert False
 
 
     CONSOLE.print("Integrating the Surface TSDF")
@@ -630,6 +639,9 @@ def export_tri_depth_tsdf(
             depth_images_50[i : i + batch_size],
             depth_images_16[i : i + batch_size],
             depth_images_84[i : i + batch_size],
+            ray_origins[i : i + batch_size],
+            ray_directions[i : i + batch_size],
+            ray_cam_inds[i : i + batch_size],
             color_images=color_images[i : i + batch_size],
         )
 
