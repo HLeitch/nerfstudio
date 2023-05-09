@@ -381,8 +381,6 @@ class TSDF:
         tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
         tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
 
-        print(f"pre gridsample: depths{depth_images}\n origins{ray_origins}")
-        print(f"post gridsample: depths{sampled_depth}\n origins{sampled_origins}")
         # print(f"tsdf_values_outside: {tsdf_values_outside}")
         # print(f"tsdf_values_inside: {tsdf_values_inside}")
         
@@ -390,62 +388,111 @@ class TSDF:
         tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
 
         valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
+        
+        print(f"depth images shape: {depth_images_inside.shape}")
+        
+        ## Normal Sampling##
+
+        ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
+        ## Nc in eq 12 of nerfmeshing. 
+        linear_spaces = torch.linspace(0,1,10).cuda()
+
+        outside_positions = ray_origins+(ray_directions*depth_images_outside)
+        inside_positions = ray_origins+(ray_directions*depth_images_inside)
+
+        print(f"inside: {outside_positions[0,:,0,0]}")
+        print(f"inside: {inside_positions[0,:,0,0]}")
+
+
+
+        pos_difference = (inside_positions - outside_positions).cuda()
+        print(f"Pos_difference: {pos_difference[0,:,0,0]}")
+
+
+        distance_expanded = pos_difference[:,:,:,:,None]
+        distance_expanded = distance_expanded.expand(-1,-1,-1,-1,10).cuda()
+
+        outside_expanded = outside_positions[:,:,:,:,None]
+        outsde_expanded = outside_expanded.expand(-1,-1,-1,-1,10)
+
+        linear_spaces_exp = linear_spaces.expand_as(distance_expanded)
+        print(linear_spaces_exp.shape)
+        print(distance_expanded.shape)
+        distance_from_outside = (linear_spaces_exp*distance_expanded)
+        normal_position_samples = outside_expanded + distance_from_outside
+        print(f"normal pos samples : {normal_position_samples}")
+        assert False
+        print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
+
+        ##normal_position_samples = pos_to_sample[...,4] + outside_positions
+        print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+
+
+        # print(outside_positions.shape)
+        # print(test.shape)
+        assert False
+        normal_sample_depths = torch.linspace(depth_images_outside,depth_images_inside,10)
+
+        print(f"normal sample depths: {normal_sample_depths.shape}")
+        
 
         # Sequentially update the TSDF...
         for i in range(batch_size):
-            valid_points_i = valid_points[i]
-            valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
+            if True: print(i)
+            else:
+                valid_points_i = valid_points[i]
+                valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
 
-            # the old values
-            old_tsdf_values_i = self.values[valid_points_i_shape]
-            old_weights_i = self.weights[valid_points_i_shape]
+                # the old values
+                old_tsdf_values_i = self.values[valid_points_i_shape]
+                old_weights_i = self.weights[valid_points_i_shape]
 
-            # the new values
-            # TODO: let the new weight be configurable
+                # the new values
+                # TODO: let the new weight be configurable
 
-            # Rescale to limits of [-0.1,0.1]
-            new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
-            new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
-            new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
+                # Rescale to limits of [-0.1,0.1]
+                new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
+                new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
+                new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
 
-            ##implimentation transplanted from colour processing below.
-            sampled_origins_i = sampled_origins[i][:, valid_points_i.squeeze(0)].permute(1,0)
+                ##implimentation transplanted from colour processing below.
+                sampled_origins_i = sampled_origins[i][:, valid_points_i.squeeze(0)].permute(1,0)
 
-            print(f"Single Values? {new_tsdf_values_surface_i[0]}, {sampled_origins_i[0]}")
+                print(f"Single Values? {new_tsdf_values_surface_i[0]}, {sampled_origins_i[0]}")
 
-            # print(f"Inside: {new_tsdf_values_inside_i}")
-            #print(f"SurfaceAll: {tsdf_values_surface.shape}")
-            print(f"Surface: {valid_points_i}")
-            # print(f"Outside: {new_tsdf_values_outside_i}")
+                # print(f"Inside: {new_tsdf_values_inside_i}")
+                #print(f"SurfaceAll: {tsdf_values_surface.shape}")
+                print(f"Surface: {valid_points_i}")
+                # print(f"Outside: {new_tsdf_values_outside_i}")
 
 
-            ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
-            ## can keep the weight clamps at 1.
-            surface_loss = (((new_tsdf_values_outside_i)**2)+
-                            (new_tsdf_values_surface_i**2)+
-                            ((new_tsdf_values_inside_i)**2))
-            
-            #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
-            print(f"Surface Loss elementwise: {surface_loss}")
+                ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
+                ## can keep the weight clamps at 1.
+                surface_loss = (((new_tsdf_values_outside_i)**2)+
+                                (new_tsdf_values_surface_i**2)+
+                                ((new_tsdf_values_inside_i)**2))
+                
+                #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+                print(f"Surface Loss elementwise: {surface_loss}")
 
-            ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
-            ## no weight is added. IMPLIMENT NEXT 
-            new_weights_i =(1.0/((0.1+surface_loss))) ##torch.abs((5.01-surface_loss)/5)##
+                ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
+                ## no weight is added. IMPLIMENT NEXT 
+                new_weights_i =(1.0/((0.1+surface_loss))) ##torch.abs((5.01-surface_loss)/5)##
 
-            total_weights = old_weights_i + new_weights_i
-            print(f"Old Weights: {total_weights}")
+                total_weights = old_weights_i + new_weights_i
+                print(f"Old Weights: {total_weights}")
 
-            self.values[valid_points_i_shape] = (
-                old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
-            ) / total_weights
-            self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
+                self.values[valid_points_i_shape] = (
+                    old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
+                ) / total_weights
+                self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
 
-            if color_images is not None:
-                old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
-                new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-                self.colors[valid_points_i_shape] = (
-                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
-                ) / total_weights[:, None]
+                if color_images is not None:
+                    old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
+                    new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
+                    self.colors[valid_points_i_shape] = (
+                        old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
+                    ) / total_weights[:, None]
 
 
 def export_tsdf_mesh(
