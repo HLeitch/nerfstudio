@@ -33,6 +33,7 @@ from rich.console import Console
 from skimage import measure
 from torchtyping import TensorType
 
+import nerfstudio.fields.nerfacto_field
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
 from nerfstudio.exporter.exporter_utils import (
     Mesh,
@@ -391,47 +392,44 @@ class TSDF:
         
         print(f"depth images shape: {depth_images_inside.shape}")
         
-        ## Normal Sampling##
+        # ## Normal Sampling##
 
-        ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
-        ## Nc in eq 12 of nerfmeshing. 
-        linear_spaces = torch.linspace(0,1,10).cuda()
+        # ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
+        # ## Nc in eq 12 of nerfmeshing. 
+        # linear_spaces = torch.linspace(0,1,10).cuda()
 
-        outside_positions = ray_origins+(ray_directions*depth_images_outside)
-        inside_positions = ray_origins+(ray_directions*depth_images_inside)
+        # outside_positions = ray_origins+(ray_directions*depth_images_outside)
+        # inside_positions = ray_origins+(ray_directions*depth_images_inside)
 
-        print(f"inside: {outside_positions[0,:,0,0]}")
-        print(f"inside: {inside_positions[0,:,0,0]}")
-
-
-
-        pos_difference = (inside_positions - outside_positions).cuda()
-        print(f"Pos_difference: {pos_difference[0,:,0,0]}")
+        # print(f"inside: {outside_positions[0,:,0,0]}")
+        # print(f"inside: {inside_positions[0,:,0,0]}")
 
 
-        distance_expanded = pos_difference[:,:,:,:,None]
-        distance_expanded = distance_expanded.expand(-1,-1,-1,-1,10).cuda()
 
-        outside_expanded = outside_positions[:,:,:,:,None]
-        outsde_expanded = outside_expanded.expand(-1,-1,-1,-1,10)
-
-        linear_spaces_exp = linear_spaces.expand_as(distance_expanded)
-        print(linear_spaces_exp.shape)
-        print(distance_expanded.shape)
-        distance_from_outside = (linear_spaces_exp*distance_expanded)
-        normal_position_samples = outside_expanded + distance_from_outside
-        print(f"normal pos samples : {normal_position_samples}")
-        assert False
-        print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
-
-        ##normal_position_samples = pos_to_sample[...,4] + outside_positions
-        print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+        # pos_difference = (inside_positions - outside_positions).cuda()
+        # print(f"Pos_difference: {pos_difference[0,:,0,0]}")
 
 
-        # print(outside_positions.shape)
-        # print(test.shape)
-        assert False
-        normal_sample_depths = torch.linspace(depth_images_outside,depth_images_inside,10)
+        # distance_expanded = pos_difference[:,:,:,:,None]
+        # distance_expanded = distance_expanded.expand(-1,-1,-1,-1,10).cuda()
+
+        # outside_expanded = outside_positions[:,:,:,:,None]
+        # outside_expanded = outside_expanded.expand(-1,-1,-1,-1,10)
+
+        # linear_spaces_exp = linear_spaces.expand_as(distance_expanded)
+        # print(linear_spaces_exp.shape)
+        # print(distance_expanded.shape)
+        # distance_from_outside = (linear_spaces_exp*distance_expanded)
+        # normal_position_samples = outside_expanded + distance_from_outside
+
+        # print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
+
+        # print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+        
+        # normal_samples = model.field.get_normals(normal_position_samples)
+        # print(f"normalsamples : {normal_samples}")
+        # # print(outside_positions.shape)
+        # # print(test.shape)
 
         print(f"normal sample depths: {normal_sample_depths.shape}")
         
@@ -671,12 +669,48 @@ def export_tri_depth_tsdf(
     depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     print(depth_images_50.shape)
-
     
     ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
 
+    ## Normal Sampling##
+
+    ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
+    ## Nc in eq 12 of nerfmeshing.
+    linear_spaces = torch.linspace(0,1,10).cuda()
+
+    outside_positions = ray_origins+(ray_directions*depth_images_16)
+    inside_positions = ray_origins+(ray_directions*depth_images_84)
+
+    print(f"outside: {outside_positions[0,:,0,0]}")
+    print(f"inside: {inside_positions[0,:,0,0]}")
+
+    pos_difference = (inside_positions - outside_positions).cuda()
+    print(f"Pos_difference: {pos_difference[0,:,0,0]}")
+
+
+    distance_expanded = pos_difference[:,:,:,:,None]
+    distance_expanded = distance_expanded.expand(-1,-1,-1,-1,10).cuda()
+
+    outside_expanded = outside_positions[:,:,:,:,None]
+    outside_expanded = outside_expanded.expand(-1,-1,-1,-1,10)
+
+    linear_spaces_exp = linear_spaces.expand_as(distance_expanded)
+    print(linear_spaces_exp.shape)
+    print(distance_expanded.shape)
+    distance_from_outside = (linear_spaces_exp*distance_expanded)
+    normal_position_samples = outside_expanded + distance_from_outside
+    
+    print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
+
+    print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+    
+    pipeline.model.field.get_density(normal_position_samples)
+
+    normal_samples = pipeline.model.field.get_normals()
+    print(f"normalsamples : {normal_samples.shape}")
+    assert false
 
     CONSOLE.print("Integrating the Surface TSDF")
     for i in range(0, len(c2w), batch_size):
