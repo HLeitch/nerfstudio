@@ -658,53 +658,53 @@ def export_tri_depth_tsdf(
         rendered_resolution_scaling_factor=1.0 / downscale_factor,
         disable_distortion=True,
     )
-    # camera extrinsics and intrinsics
-    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
-    # make c2w homogeneous
-    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
-    c2w[:, 3, 3] = 1
-    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
-    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    print(depth_images_50.shape)
-    
-    ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+
 
     ## Normal Sampling##
 
     ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
     ## Nc in eq 12 of nerfmeshing.
     linear_spaces = torch.linspace(0,1,10).cuda()
+    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device) 
+    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)  
+    print(depth_images_50.shape)
+    
+    ray_origins = torch.tensor(np.array(ray_origins), device=device)
+    ray_directions = torch.tensor(np.array(ray_directions), device=device)
+    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+
+    print(f"ray: {ray_origins.shape}\ndepth: {depth_images_16.shape}")
 
     outside_positions = ray_origins+(ray_directions*depth_images_16)
     inside_positions = ray_origins+(ray_directions*depth_images_84)
 
-    print(f"outside: {outside_positions[0,:,0,0]}")
-    print(f"inside: {inside_positions[0,:,0,0]}")
+    print(f"outside: {outside_positions[:,0,0,0]}")
+    print(f"inside: {inside_positions[:,0,0,0]}")
 
     pos_difference = (inside_positions - outside_positions)
-    print(f"Pos_difference: {pos_difference[0,:,0,0]}")
+    print(f"Pos_difference: {pos_difference[:,0,0,0]}")
 
 
-    distance_expanded = pos_difference[:,:,:,:,None]
-    distance_expanded = distance_expanded.expand(-1,-1,-1,-1,10).cuda()
+    distance_expanded = pos_difference[None,:,:,:,:]
+    distance_expanded = distance_expanded.expand(10,-1,-1,-1,-1).cuda()
 
-    outside_expanded = outside_positions[:,:,:,:,None]
-    outside_expanded = outside_expanded.expand(-1,-1,-1,-1,10)
-
-    linear_spaces_exp = linear_spaces.expand_as(distance_expanded)
+    outside_expanded = outside_positions[None,:,:,:,:]
+    outside_expanded = outside_expanded.expand(10,-1,-1,-1,-1)
+    linear_spaces_exp = torch.empty_like(distance_expanded)
+    counter =0
+    for s in linear_spaces:
+        linear_spaces_exp[counter,:,:,:,:] = s
+        counter = counter+1
+    print(linear_spaces_exp)
     print(linear_spaces_exp.shape)
     print(distance_expanded.shape)
     distance_from_outside = (linear_spaces_exp*distance_expanded)
     normal_position_samples = outside_expanded + distance_from_outside
     
-    print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
+    #print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
 
-    print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+    # print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
     print(f"normal positions shape: {normal_position_samples.shape}")
     
     ##Slicing to fit onto gpu
@@ -726,7 +726,22 @@ def export_tri_depth_tsdf(
     normal_samples = pipeline.model.field.get_normals()
     print(f"normalsamples : {normal_samples.shape}")
     assert False
-
+    
+    # camera extrinsics and intrinsics
+    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
+    # make c2w homogeneous
+    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
+    c2w[:, 3, 3] = 1
+    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
+    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
+    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    print(depth_images_50.shape)
+    
+    # ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     CONSOLE.print("Integrating the Surface TSDF")
     for i in range(0, len(c2w), batch_size):
         tsdf_surface.integrate_tri_tsdf(
