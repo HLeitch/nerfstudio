@@ -686,7 +686,7 @@ def export_tri_depth_tsdf(
     print(f"outside: {outside_positions[0,:,0,0]}")
     print(f"inside: {inside_positions[0,:,0,0]}")
 
-    pos_difference = (inside_positions - outside_positions).cuda()
+    pos_difference = (inside_positions - outside_positions)
     print(f"Pos_difference: {pos_difference[0,:,0,0]}")
 
 
@@ -705,12 +705,27 @@ def export_tri_depth_tsdf(
     print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
 
     print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+    print(f"normal positions shape: {normal_position_samples.shape}")
     
-    pipeline.model.field.get_density(normal_position_samples)
+    ##Slicing to fit onto gpu
+    normal_samples = torch.empty_like(normal_position_samples)
+    i = 0
+    for n in torch.chunk(normal_position_samples,normal_position_samples.shape[0],dim=0):
+        print(n.shape)
+        n = n.squeeze()
+        print(n.shape)
+        pipeline.model.field.density_fn(n)
+
+        normal_slice = pipeline.model.field.get_normals()
+        print(normal_slice.shape)
+        normal_samples[i,:,:,:,:] = normal_slice
+        assert False
+
+    pipeline.model.field.density_fn(normal_position_samples)
 
     normal_samples = pipeline.model.field.get_normals()
     print(f"normalsamples : {normal_samples.shape}")
-    assert false
+    assert False
 
     CONSOLE.print("Integrating the Surface TSDF")
     for i in range(0, len(c2w), batch_size):
