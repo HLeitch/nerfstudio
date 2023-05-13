@@ -260,7 +260,6 @@ class TCNNNerfactoField(Field):
         d = self.direction_encoding(directions_flat)
 
         outputs_shape = ray_samples.frustums.directions.shape[:-1]
-
         # appearance
         if self.training:
             embedded_appearance = self.embedding_appearance(camera_indices)

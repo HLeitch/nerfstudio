@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+import GPUtil
 import numpy as np
 import pymeshlab
 import torch
@@ -34,12 +35,14 @@ from skimage import measure
 from torchtyping import TensorType
 
 import nerfstudio.fields.nerfacto_field
+from nerfstudio.cameras.rays import Frustums, RaySamples
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
 from nerfstudio.exporter.exporter_utils import (
     Mesh,
     render_trajectory,
     render_trajectory_tri_tsdf,
 )
+from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
 
@@ -287,8 +290,7 @@ class TSDF:
         depth_images_outside: TensorType["batch", 1, "height", "width"],
         depth_images_inside: TensorType["batch", 1, "height", "width"],
         ray_origins: TensorType["batch", 3, "height", "width"],
-        ray_directions: TensorType["batch", 1, "height", "width"],
-        ray_cam_inds: TensorType["batch", 1, "height", "width"],
+        normal_regularity: TensorType["batch", 1, "height", "width"],
         color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
         mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
     ):
@@ -359,10 +361,10 @@ class TSDF:
         )  # [batch, N, 1]
         sampled_depth_84 = sampled_depth_84.squeeze(2)  # [batch, 1, N]
 
-        sampled_origins = F.grid_sample(
-            input=ray_origins, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        )  # [batch, N, 1]
-        sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
+        # sampled_origins = F.grid_sample(
+        #     input=ray_origins, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
+        # )  # [batch, N, 1]
+        # sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
 
 
         # colors
@@ -392,105 +394,67 @@ class TSDF:
         
         print(f"depth images shape: {depth_images_inside.shape}")
         
-        # ## Normal Sampling##
-
-        # ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
-        # ## Nc in eq 12 of nerfmeshing. 
-        # linear_spaces = torch.linspace(0,1,10).cuda()
-
-        # outside_positions = ray_origins+(ray_directions*depth_images_outside)
-        # inside_positions = ray_origins+(ray_directions*depth_images_inside)
-
-        # print(f"inside: {outside_positions[0,:,0,0]}")
-        # print(f"inside: {inside_positions[0,:,0,0]}")
-
-
-
-        # pos_difference = (inside_positions - outside_positions).cuda()
-        # print(f"Pos_difference: {pos_difference[0,:,0,0]}")
-
-
-        # distance_expanded = pos_difference[:,:,:,:,None]
-        # distance_expanded = distance_expanded.expand(-1,-1,-1,-1,10).cuda()
-
-        # outside_expanded = outside_positions[:,:,:,:,None]
-        # outside_expanded = outside_expanded.expand(-1,-1,-1,-1,10)
-
-        # linear_spaces_exp = linear_spaces.expand_as(distance_expanded)
-        # print(linear_spaces_exp.shape)
-        # print(distance_expanded.shape)
-        # distance_from_outside = (linear_spaces_exp*distance_expanded)
-        # normal_position_samples = outside_expanded + distance_from_outside
-
-        # print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
-
-        # print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
-        
-        # normal_samples = model.field.get_normals(normal_position_samples)
-        # print(f"normalsamples : {normal_samples}")
-        # # print(outside_positions.shape)
-        # # print(test.shape)
-
-        print(f"normal sample depths: {normal_sample_depths.shape}")
+        print(f"normal regularity: {normal_regularity.shape}")
         
 
         # Sequentially update the TSDF...
         for i in range(batch_size):
-            if True: print(i)
-            else:
-                valid_points_i = valid_points[i]
-                valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
-
-                # the old values
-                old_tsdf_values_i = self.values[valid_points_i_shape]
-                old_weights_i = self.weights[valid_points_i_shape]
-
-                # the new values
-                # TODO: let the new weight be configurable
-
-                # Rescale to limits of [-0.1,0.1]
-                new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
-                new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
-                new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
-
-                ##implimentation transplanted from colour processing below.
-                sampled_origins_i = sampled_origins[i][:, valid_points_i.squeeze(0)].permute(1,0)
-
-                print(f"Single Values? {new_tsdf_values_surface_i[0]}, {sampled_origins_i[0]}")
-
-                # print(f"Inside: {new_tsdf_values_inside_i}")
-                #print(f"SurfaceAll: {tsdf_values_surface.shape}")
-                print(f"Surface: {valid_points_i}")
-                # print(f"Outside: {new_tsdf_values_outside_i}")
-
-
-                ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
-                ## can keep the weight clamps at 1.
-                surface_loss = (((new_tsdf_values_outside_i)**2)+
-                                (new_tsdf_values_surface_i**2)+
-                                ((new_tsdf_values_inside_i)**2))
                 
-                #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
-                print(f"Surface Loss elementwise: {surface_loss}")
+            valid_points_i = valid_points[i]
+            valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
 
-                ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
-                ## no weight is added. IMPLIMENT NEXT 
-                new_weights_i =(1.0/((0.1+surface_loss))) ##torch.abs((5.01-surface_loss)/5)##
+            # the old values
+            old_tsdf_values_i = self.values[valid_points_i_shape]
+            old_weights_i = self.weights[valid_points_i_shape]
 
-                total_weights = old_weights_i + new_weights_i
-                print(f"Old Weights: {total_weights}")
+            # the new values
+            # TODO: let the new weight be configurable
 
-                self.values[valid_points_i_shape] = (
-                    old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
-                ) / total_weights
-                self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
+            # Rescale to limits of [-0.1,0.1]
+            new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
+            new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
+            new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
 
-                if color_images is not None:
-                    old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
-                    new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-                    self.colors[valid_points_i_shape] = (
-                        old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
-                    ) / total_weights[:, None]
+            
+            # print(f"Inside: {new_tsdf_values_inside_i}")
+            #print(f"SurfaceAll: {tsdf_values_surface.shape}")
+            print(f"Surface: {valid_points_i}")
+            # print(f"Outside: {new_tsdf_values_outside_i}")
+
+
+            ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
+            ## can keep the weight clamps at 1.
+            surface_loss = (((new_tsdf_values_outside_i)**2)+
+                            (new_tsdf_values_surface_i**2)+
+                            ((new_tsdf_values_inside_i)**2))
+            
+            #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
+            print(f"Surface Loss elementwise: {surface_loss}")
+
+            ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
+            ## no weight is added. IMPLIMENT NEXT 
+            new_weights_i =(1.0/((0.1+surface_loss))) ##torch.abs((5.01-surface_loss)/5)##
+
+            total_weights = old_weights_i + new_weights_i
+            print(f"Old Weights: {total_weights}")
+
+            self.values[valid_points_i_shape] = (
+                old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
+            ) / total_weights
+            self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
+
+            ##Normal Weight Calculation
+            normal_loss = 10 - normal_regularity
+            normal_loss = (1.0/(0.1+normal_loss))
+            print(f"Normal loss : {normal_loss}")
+            assert False
+
+            if color_images is not None:
+                old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
+                new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
+                self.colors[valid_points_i_shape] = (
+                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
+                ) / total_weights[:, None]
 
 
 def export_tsdf_mesh(
@@ -575,7 +539,7 @@ def export_tsdf_mesh(
     CONSOLE.print("Saving TSDF Mesh")
     tsdf.export_mesh(mesh, filename=str(output_dir / "tsdf_mesh.ply"))
 
-
+@torch.no_grad()
 def export_tri_depth_tsdf(
     pipeline: Pipeline,
     output_dir: Path,
@@ -686,21 +650,21 @@ def export_tri_depth_tsdf(
     print(f"Pos_difference: {pos_difference[:,0,0,0]}")
 
 
-    distance_expanded = pos_difference[None,:,:,:,:]
-    distance_expanded = distance_expanded.expand(10,-1,-1,-1,-1).cuda()
+    pos_difference = pos_difference[None,:,:,:,:]
+    pos_difference = pos_difference.expand(10,-1,-1,-1,-1).cuda()
 
     outside_expanded = outside_positions[None,:,:,:,:]
     outside_expanded = outside_expanded.expand(10,-1,-1,-1,-1)
-    linear_spaces_exp = torch.empty_like(distance_expanded)
+    linear_spaces_exp = torch.empty_like(pos_difference)
     counter =0
     for s in linear_spaces:
         linear_spaces_exp[counter,:,:,:,:] = s
         counter = counter+1
     print(linear_spaces_exp)
     print(linear_spaces_exp.shape)
-    print(distance_expanded.shape)
-    distance_from_outside = (linear_spaces_exp*distance_expanded)
-    normal_position_samples = outside_expanded + distance_from_outside
+    # print(distance_expanded.shape)
+    linear_spaces_exp = (linear_spaces_exp*pos_difference)
+    normal_position_samples = outside_expanded + linear_spaces_exp
     
     #print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
 
@@ -708,25 +672,54 @@ def export_tri_depth_tsdf(
     print(f"normal positions shape: {normal_position_samples.shape}")
     
     ##Slicing to fit onto gpu
-    normal_samples = torch.empty_like(normal_position_samples)
+    normal_samples = torch.zeros_like(normal_position_samples)
     i = 0
+
+    # memory usage seems stable
     for n in torch.chunk(normal_position_samples,normal_position_samples.shape[0],dim=0):
-        print(n.shape)
         n = n.squeeze()
-        print(n.shape)
-        pipeline.model.field.density_fn(n)
+        print(f"normals at the {i} position in ray being calculated")
 
-        normal_slice = pipeline.model.field.get_normals()
-        print(normal_slice.shape)
-        normal_samples[i,:,:,:,:] = normal_slice
-        assert False
 
-    pipeline.model.field.density_fn(normal_position_samples)
+        GPUtil.showUtilization()
+        j=0
+        for m in torch.chunk(n,n.shape[0],dim=0):
+            m.squeeze
+            ##pipeline.model.field.density_fn(n)
+            ray_samples = RaySamples(
+                frustums=Frustums(
+                    origins=m,
+                    directions=torch.ones_like(m),
+                    starts=torch.zeros_like(m[..., :1]),
+                    ends=torch.zeros_like(m[..., :1]),
+                    pixel_area=torch.ones_like(m[..., :1]),
+                ),
+                camera_indices= ray_cam_inds[i,j]
+            )
 
-    normal_samples = pipeline.model.field.get_normals()
-    print(f"normalsamples : {normal_samples.shape}")
-    assert False
+            normal_slice = pipeline.model.field.forward(ray_samples,True)[FieldHeadNames.NORMALS]
+
+            normal_samples[i,j,:,:,:] = normal_slice
+            j = j+1
+
+            
+            del(normal_slice,ray_samples)
+
+        i = i+1
     
+    del(ray_cam_inds)
+
+    print(f"normalsamples : {normal_samples.shape}")
+
+    normal_samples = normal_samples.sum(dim=0)
+    normal_samples.squeeze()
+
+    ### Max regularity of 10 (as in paper) or the number of normal points sampled per ray. 
+    normal_regularity = torch.linalg.norm(normal_samples,dim=3)[:,:,:,None]
+
+    print(normal_regularity)
+    print(normal_regularity.shape)
+    print(f"{normal_samples[22,12,5,:]} has magnitude {normal_regularity[22,12,5,:]}")
     # camera extrinsics and intrinsics
     c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
     # make c2w homogeneous
@@ -734,9 +727,11 @@ def export_tri_depth_tsdf(
     c2w[:, 3, 3] = 1
     K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
     color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_50 = torch.tensor(depth_images_50, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_16 = torch.tensor(depth_images_16, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_84 = torch.tensor(depth_images_84, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    normal_regularity = torch.tensor(normal_regularity, device=device).permute(0,3,1,2)   # shape (N, 1, H, W)
+
     print(depth_images_50.shape)
     
     # ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
@@ -751,8 +746,7 @@ def export_tri_depth_tsdf(
             depth_images_16[i : i + batch_size],
             depth_images_84[i : i + batch_size],
             ray_origins[i : i + batch_size],
-            ray_directions[i : i + batch_size],
-            ray_cam_inds[i : i + batch_size],
+            normal_regularity[i:i+batch_size],
             color_images=color_images[i : i + batch_size],
         )
 
