@@ -445,8 +445,12 @@ class TSDF:
 
             ##Normal Weight Calculation
             normal_loss = 10 - normal_regularity
-            normal_loss = (1.0/(0.1+normal_loss))
-            print(f"Normal loss : {normal_loss}")
+            normal_loss = normal_loss**2
+            ##prevents weight from exceeding 1
+            normal_weight = (1.0/(1+normal_loss))
+            del(normal_loss)
+            
+            print(f"Normal weight : {normal_weight[0,0,:]}")
             assert False
 
             if color_images is not None:
