@@ -289,7 +289,8 @@ class TSDF:
         depth_images: TensorType["batch", 1, "height", "width"],
         depth_images_outside: TensorType["batch", 1, "height", "width"],
         depth_images_inside: TensorType["batch", 1, "height", "width"],
-        ray_origins: TensorType["batch", 3, "height", "width"],
+        ##ray_origins: TensorType["batch", 3, "height", "width"],
+        normal_samples: TensorType["batch", 3, "height", "width"],
         normal_regularity: TensorType["batch", 1, "height", "width"],
         color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
         mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
@@ -336,6 +337,7 @@ class TSDF:
         voxel_cam_coords_z = voxel_cam_coords[:, 2:3, :]
         voxel_cam_points = torch.bmm(K, voxel_cam_coords[:, 0:3, :] / voxel_cam_coords_z)  # [batch, 3, N]
         voxel_pixel_coords = voxel_cam_points[:, :2, :]  # [batch, 2, N]
+        del(voxel_cam_coords_z,voxel_cam_points,voxel_cam_coords,voxel_world_coords)
 
         # Sample the depth images with grid sample...
 
@@ -348,7 +350,6 @@ class TSDF:
             input=depth_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
         )  # [batch, N, 1]
         sampled_depth = sampled_depth.squeeze(2)  # [batch, 1, N]
-
         # depth Outside
         sampled_depth_16 = F.grid_sample(
             input=depth_images_outside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
@@ -361,11 +362,19 @@ class TSDF:
         )  # [batch, N, 1]
         sampled_depth_84 = sampled_depth_84.squeeze(2)  # [batch, 1, N]
 
+
+        del(depth_images,depth_images_outside,depth_images_inside)
+
         # sampled_origins = F.grid_sample(
         #     input=ray_origins, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
         # )  # [batch, N, 1]
         # sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
 
+        ## normals
+        normal_samples_grid = F.grid_sample(
+            input=normal_samples, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
+                                            )# [batch, N, 3]
+        sampled_normals = sampled_normals.squeeze(2)
 
         # colors
         if color_images is not None:
@@ -375,8 +384,8 @@ class TSDF:
             sampled_colors = sampled_colors.squeeze(2)  # [batch, 3, N]
 
         surface_dist = sampled_depth - voxel_depth  # [batch, 1, N]
-        outside_dist = sampled_depth_16 - voxel_depth
-        inside_dist = sampled_depth_84 - voxel_depth
+        # outside_dist = sampled_depth_16 - voxel_depth
+        # inside_dist = sampled_depth_84 - voxel_depth
 
         hyperparameter = 1
         print(surface_dist)
@@ -392,16 +401,12 @@ class TSDF:
 
         valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
         
-        print(f"depth images shape: {depth_images_inside.shape}")
-        
-        print(f"normal regularity: {normal_regularity.shape}")
-        
-
         # Sequentially update the TSDF...
         for i in range(batch_size):
                 
             valid_points_i = valid_points[i]
             valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
+            
 
             # the old values
             old_tsdf_values_i = self.values[valid_points_i_shape]
@@ -450,7 +455,7 @@ class TSDF:
             normal_weight = (1.0/(1+normal_loss))
             del(normal_loss)
             
-            print(f"Normal weight : {normal_weight[0,0,:]}")
+
             assert False
 
             if color_images is not None:
@@ -683,9 +688,6 @@ def export_tri_depth_tsdf(
     for n in torch.chunk(normal_position_samples,normal_position_samples.shape[0],dim=0):
         n = n.squeeze()
         print(f"normals at the {i} position in ray being calculated")
-
-
-        GPUtil.showUtilization()
         j=0
         for m in torch.chunk(n,n.shape[0],dim=0):
             m.squeeze
@@ -711,7 +713,7 @@ def export_tri_depth_tsdf(
 
         i = i+1
     
-    del(ray_cam_inds)
+    del(ray_cam_inds, ray_origins)
 
     print(f"normalsamples : {normal_samples.shape}")
 
@@ -749,7 +751,8 @@ def export_tri_depth_tsdf(
             depth_images_50[i : i + batch_size],
             depth_images_16[i : i + batch_size],
             depth_images_84[i : i + batch_size],
-            ray_origins[i : i + batch_size],
+            ##ray_origins[i : i + batch_size],
+            normal_samples[i:i+batch_size],
             normal_regularity[i:i+batch_size],
             color_images=color_images[i : i + batch_size],
         )
