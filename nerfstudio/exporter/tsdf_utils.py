@@ -61,6 +61,14 @@ class TSDF:
     """TSDF values for each voxel."""
     weights: TensorType["xdim", "ydim", "zdim"]
     """TSDF weights for each voxel."""
+
+    ###Remove if TriTSDF is made into its own class
+    normal_values: TensorType["xdim", "ydim", "zdim"]
+    """Values of each voxel of the tsdf"""
+    normal_weights: TensorType["xdim", "ydim", "zdim"]
+    """weights of Normal for each voxel in TSDF"""
+    #####
+
     colors: TensorType["xdim", "ydim", "zdim", 3]
     """TSDF colors for each voxel."""
     voxel_size: TensorType[3]
@@ -79,6 +87,8 @@ class TSDF:
         self.voxel_coords = self.voxel_coords.to(device)
         self.values = self.values.to(device)
         self.weights = self.weights.to(device)
+        self.normal_values = self.normal_values.to(device)
+        self.normal_weights = self.normal_weights.to(device)
         self.colors = self.colors.to(device)
         self.voxel_size = self.voxel_size.to(device)
         self.origin = self.origin.to(device)
@@ -117,12 +127,14 @@ class TSDF:
 
         # initialize the values and weights
         values = -torch.ones(volume_dims.tolist())
+        normal_values = torch.zeros(volume_dims.tolist()+[3])
+        normal_weights = torch.zeros(volume_dims.tolist()+[3])
         weights = torch.zeros(volume_dims.tolist())
         colors = torch.zeros(volume_dims.tolist() + [3])
 
         # TODO: move to device
 
-        return TSDF(voxel_coords, values, weights, colors, voxel_size, origin)
+        return TSDF(voxel_coords, values, weights,normal_values,normal_weights, colors, voxel_size, origin)
 
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
@@ -290,9 +302,10 @@ class TSDF:
         depth_images_outside: TensorType["batch", 1, "height", "width"],
         depth_images_inside: TensorType["batch", 1, "height", "width"],
         ##ray_origins: TensorType["batch", 3, "height", "width"],
+        surface_normals: TensorType["batch", 3, "height", "width"],
         normal_samples: TensorType["batch", 3, "height", "width"],
         normal_regularity: TensorType["batch", 1, "height", "width"],
-        color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
+        ##color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
         mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
     ):
         """Integrates a batch of depth images into the TSDF.
@@ -350,6 +363,7 @@ class TSDF:
             input=depth_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
         )  # [batch, N, 1]
         sampled_depth = sampled_depth.squeeze(2)  # [batch, 1, N]
+        print(F"sampled depth size: {sampled_depth.shape}")
         # depth Outside
         sampled_depth_16 = F.grid_sample(
             input=depth_images_outside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
@@ -371,17 +385,26 @@ class TSDF:
         # sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
 
         ## normals
+        surface_normals_grid = F.grid_sample(input=surface_normals, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
+            ) # [batch, N, 3])
+        surface_normals_grid = surface_normals_grid.squeeze(2)
+
         normal_samples_grid = F.grid_sample(
             input=normal_samples, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-                                            )# [batch, N, 3]
-        sampled_normals = sampled_normals.squeeze(2)
+            ) # [batch, N, 3]
+        normal_samples_grid = normal_samples_grid.squeeze(2)
+
+        normal_regularity_grid = F.grid_sample(
+            input=normal_regularity, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
+            ) # [batch, N, 3]
+        normal_regularity_grid = normal_regularity_grid.squeeze(2)
 
         # colors
-        if color_images is not None:
-            sampled_colors = F.grid_sample(
-                input=color_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-            )  # [batch, N, 3]
-            sampled_colors = sampled_colors.squeeze(2)  # [batch, 3, N]
+        # if color_images is not None:
+        #     sampled_colors = F.grid_sample(
+        #         input=color_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
+        #     )  # [batch, N, 3]
+        #     sampled_colors = sampled_colors.squeeze(2)  # [batch, 3, N]
 
         surface_dist = sampled_depth - voxel_depth  # [batch, 1, N]
         # outside_dist = sampled_depth_16 - voxel_depth
@@ -412,6 +435,10 @@ class TSDF:
             old_tsdf_values_i = self.values[valid_points_i_shape]
             old_weights_i = self.weights[valid_points_i_shape]
 
+
+            old_normal_values_i = self.normal_values[valid_points_i_shape]
+            old_normal_weights_i = self.normal_weights[valid_points_i_shape]
+
             # the new values
             # TODO: let the new weight be configurable
 
@@ -419,6 +446,11 @@ class TSDF:
             new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
             new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
             new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
+
+            new_normal_values = surface_normals_grid[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
+            print(f"normal regularity {normal_regularity.shape}")
+            normal_regularity_i = normal_regularity_grid[i][valid_points_i]
+            normal_samples_i = normal_samples_grid[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
 
             
             # print(f"Inside: {new_tsdf_values_inside_i}")
@@ -449,21 +481,24 @@ class TSDF:
             self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
 
             ##Normal Weight Calculation
-            normal_loss = 10 - normal_regularity
+            normal_loss = 10 - normal_regularity_grid
             normal_loss = normal_loss**2
             ##prevents weight from exceeding 1
             normal_weight = (1.0/(1+normal_loss))
             del(normal_loss)
-            
+
+            ##Normal regularization
+            regularization_loss = torch.tensor(torch.norm((new_normal_values - old_normal_values_i),dim=1)).pow(2)
+            print(f"regularization loss = {regularization_loss}")
 
             assert False
 
-            if color_images is not None:
-                old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
-                new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-                self.colors[valid_points_i_shape] = (
-                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
-                ) / total_weights[:, None]
+            # if color_images is not None:
+            #     old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
+            #     new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
+            #     self.colors[valid_points_i_shape] = (
+            #         old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
+            #     ) / total_weights[:, None]
 
 
 def export_tsdf_mesh(
@@ -621,7 +656,7 @@ def export_tri_depth_tsdf(
     cameras = dataparser_outputs.cameras.to(device)
     #print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
+    color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
         pipeline,
         cameras,
         rgb_output_name=rgb_output_name,
@@ -631,8 +666,6 @@ def export_tri_depth_tsdf(
         rendered_resolution_scaling_factor=1.0 / downscale_factor,
         disable_distortion=True,
     )
-
-
     ## Normal Sampling##
 
     ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
@@ -642,7 +675,7 @@ def export_tri_depth_tsdf(
     depth_images_16 = torch.tensor(np.array(depth_images_16), device=device) 
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)  
     print(depth_images_50.shape)
-    
+    surface_normals = torch.tensor(np.array(surface_normals), device=device)
     ray_origins = torch.tensor(np.array(ray_origins), device=device)
     ray_directions = torch.tensor(np.array(ray_directions), device=device)
     ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
@@ -736,6 +769,8 @@ def export_tri_depth_tsdf(
     depth_images_50 = torch.tensor(depth_images_50, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_16 = torch.tensor(depth_images_16, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     depth_images_84 = torch.tensor(depth_images_84, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    surface_normals = torch.tensor(surface_normals, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
+    normal_samples = torch.tensor(normal_samples, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
     normal_regularity = torch.tensor(normal_regularity, device=device).permute(0,3,1,2)   # shape (N, 1, H, W)
 
     print(depth_images_50.shape)
@@ -752,9 +787,10 @@ def export_tri_depth_tsdf(
             depth_images_16[i : i + batch_size],
             depth_images_84[i : i + batch_size],
             ##ray_origins[i : i + batch_size],
+            surface_normals[i:i+batch_size],
             normal_samples[i:i+batch_size],
             normal_regularity[i:i+batch_size],
-            color_images=color_images[i : i + batch_size],
+            ##color_images=color_images[i : i + batch_size],
         )
 
     surfaceHyperparameter = 0.1

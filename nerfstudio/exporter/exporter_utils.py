@@ -409,6 +409,7 @@ def render_trajectory_tri_tsdf(
     depths_surface = []
     depths_outside = []
     depths_inside = []
+    surface_normals = []
     ray_origins = []
     ray_directions = []
     ray_cam_ind = []
@@ -458,12 +459,14 @@ def render_trajectory_tri_tsdf(
             depths_outside.append(outputs[outside_depth_output_name].cpu().numpy())
             depths_inside.append(outputs[inside_depth_output_name].cpu().numpy())
 
+            surface_normals.append(outputs["normals"].cpu().numpy())
+
             ray_origins.append(camera_ray_bundle.origins.cpu().numpy())
             ray_directions.append(camera_ray_bundle.origins.cpu().numpy())
             ray_cam_ind.append(camera_ray_bundle.camera_indices.cpu().numpy())
 
 
-    return images, depths_surface, depths_outside, depths_inside, ray_origins,ray_directions,ray_cam_ind
+    return images, depths_surface, depths_outside, depths_inside, surface_normals ,ray_origins,ray_directions,ray_cam_ind
 
 def Add_RayBundle(original_bundle:RayBundle, new_bundle:RayBundle):
     cam_ind = torch.cat([torch.tensor(original_bundle.camera_indices),torch.tensor(new_bundle.camera_indices)],0)
