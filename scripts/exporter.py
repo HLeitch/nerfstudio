@@ -752,6 +752,8 @@ class ExportCameraPoses(Exporter):
     """
 
     def main(self) -> None:
+        # ##Reduce memory requirements drastically##
+        # torch.set_default_dtype(torch.float16)
         """Export camera poses"""
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True)

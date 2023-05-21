@@ -610,6 +610,8 @@ def export_tri_depth_tsdf(
         bounding_box_min: Minimum coordinates of the bounding box.
         bounding_box_max: Maximum coordinates of the bounding box.
     """
+
+
     start_state = pipeline.state_dict()
 
     device = pipeline.device
@@ -629,7 +631,6 @@ def export_tri_depth_tsdf(
     else:
         raise ValueError("Resolution must be an int or a list.")
     tsdf_surface = TSDF.from_aabb(aabb, volume_dims=volume_dims)
-
     # move TSDF to device
     tsdf_surface.to(device)
 
