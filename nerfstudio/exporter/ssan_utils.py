@@ -1,3 +1,40 @@
+"""
+SSAN utils.
+"""
+
+# pylint: disable=no-member
+
+from __future__ import annotations
+
+from copy import deepcopy
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
+
+import GPUtil
+import numpy as np
+import pymeshlab
+import torch
+import torch.nn.functional as F
+from rich.console import Console
+from skimage import measure
+from tinycudann import NetworkWithInputEncoding
+from torchtyping import TensorType
+
+import nerfstudio.fields.nerfacto_field
+from nerfstudio.cameras.rays import Frustums, RaySamples
+from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
+from nerfstudio.exporter.exporter_utils import (
+    Mesh,
+    render_trajectory,
+    render_trajectory_tri_tsdf,
+)
+from nerfstudio.field_components.field_heads import FieldHeadNames
+from nerfstudio.models.nerfacto import NerfactoModelTriDepth
+from nerfstudio.pipelines.base_pipeline import Pipeline
+
+CONSOLE = Console(width=120)
+
 @dataclass
 class TSDFfromSSAN:
     """
@@ -18,7 +55,7 @@ class TSDFfromSSAN:
     """weights of Normal for each voxel in TSDF"""
     #####
     
-    surface_mlp = 
+    surface_mlp = NetworkWithInputEncoding
 
     colors: TensorType["xdim", "ydim", "zdim", 3]
     """TSDF colors for each voxel."""
@@ -83,9 +120,32 @@ class TSDFfromSSAN:
         weights = torch.zeros(volume_dims.tolist())
         colors = torch.zeros(volume_dims.tolist() + [3])
 
+
+        ###
+        ##taken from nerfacto field parameters##
+        surface_mlp = NetworkWithInputEncoding(
+            n_input_dims=3,
+            n_output_dims=1 + 3,
+            encoding_config={
+                "otype": "HashGrid",
+                "n_levels": 15,
+                "n_features_per_level": 2,
+                "log2_hashmap_size": 19,
+                "base_resolution": 16,
+                "per_level_scale": 1.382,
+            },
+            network_config={
+                "otype": "FullyFusedMLP",
+                "activation": "ReLU",
+                "output_activation": "None",
+                "n_neurons": 64,
+                "n_hidden_layers": 2 - 1,
+            },
+        )
+
         # TODO: move to device
 
-        return TSDF(voxel_coords, values, weights,normal_values,normal_weights, colors, voxel_size, origin)
+        return TSDFfromSSAN(voxel_coords, values, weights,normal_values,normal_weights, colors, voxel_size, origin)
 
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
@@ -280,28 +340,28 @@ class TSDFfromSSAN:
             [depth_images.shape[-1], depth_images.shape[-2]], device=self.device
         )  # [width, height]
 
-        # make voxel_coords homogeneous
-        voxel_world_coords = self.voxel_coords.view(3, -1)
-        voxel_world_coords = torch.cat(
-            [voxel_world_coords, torch.ones(1, voxel_world_coords.shape[1], device=self.device)], dim=0
-        )
-        voxel_world_coords = voxel_world_coords.unsqueeze(0)  # [1, 4, N]
-        voxel_world_coords = voxel_world_coords.expand(batch_size, *voxel_world_coords.shape[1:])  # [batch, 4, N]
+        # # make voxel_coords homogeneous
+        # voxel_world_coords = self.voxel_coords.view(3, -1)
+        # voxel_world_coords = torch.cat(
+        #     [voxel_world_coords, torch.ones(1, voxel_world_coords.shape[1], device=self.device)], dim=0
+        # )
+        # voxel_world_coords = voxel_world_coords.unsqueeze(0)  # [1, 4, N]
+        # voxel_world_coords = voxel_world_coords.expand(batch_size, *voxel_world_coords.shape[1:])  # [batch, 4, N]
 
-        voxel_cam_coords = torch.bmm(torch.inverse(c2w), voxel_world_coords)  # [batch, 4, N]
+        # voxel_cam_coords = torch.bmm(torch.inverse(c2w), voxel_world_coords)  # [batch, 4, N]
 
-        # flip the z axis
-        voxel_cam_coords[:, 2, :] = -voxel_cam_coords[:, 2, :]
-        # flip the y axis
-        voxel_cam_coords[:, 1, :] = -voxel_cam_coords[:, 1, :]
+        # # flip the z axis
+        # voxel_cam_coords[:, 2, :] = -voxel_cam_coords[:, 2, :]
+        # # flip the y axis
+        # voxel_cam_coords[:, 1, :] = -voxel_cam_coords[:, 1, :]
 
-        # we need the distance of the point to the camera, not the z coordinate
-        voxel_depth = torch.sqrt(torch.sum(voxel_cam_coords[:, :3, :] ** 2, dim=-2, keepdim=True))  # [batch, 1, N]
+        # # we need the distance of the point to the camera, not the z coordinate
+        # voxel_depth = torch.sqrt(torch.sum(voxel_cam_coords[:, :3, :] ** 2, dim=-2, keepdim=True))  # [batch, 1, N]
 
-        voxel_cam_coords_z = voxel_cam_coords[:, 2:3, :]
-        voxel_cam_points = torch.bmm(K, voxel_cam_coords[:, 0:3, :] / voxel_cam_coords_z)  # [batch, 3, N]
-        voxel_pixel_coords = voxel_cam_points[:, :2, :]  # [batch, 2, N]
-        del(voxel_cam_coords_z,voxel_cam_points,voxel_cam_coords,voxel_world_coords)
+        # voxel_cam_coords_z = voxel_cam_coords[:, 2:3, :]
+        # voxel_cam_points = torch.bmm(K, voxel_cam_coords[:, 0:3, :] / voxel_cam_coords_z)  # [batch, 3, N]
+        # voxel_pixel_coords = voxel_cam_points[:, :2, :]  # [batch, 2, N]
+        # del(voxel_cam_coords_z,voxel_cam_points,voxel_cam_coords,voxel_world_coords)
 
         # Sample the depth images with grid sample...
 
@@ -309,46 +369,46 @@ class TSDFfromSSAN:
         # normalize grid to [-1, 1]
         grid = 2.0 * grid / image_size.view(1, 1, 2) - 1.0  # [batch, N, 2]
         grid = grid[:, None]  # [batch, 1, N, 2]
-        # depth surface
-        sampled_depth = F.grid_sample(
-            input=depth_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        )  # [batch, N, 1]
-        sampled_depth = sampled_depth.squeeze(2)  # [batch, 1, N]
-        print(F"sampled depth size: {sampled_depth.shape}")
-        # depth Outside
-        sampled_depth_16 = F.grid_sample(
-            input=depth_images_outside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        )  # [batch, N, 1]
-        sampled_depth_16 = sampled_depth_16.squeeze(2)  # [batch, 1, N]
+        # # depth surface
+        # sampled_depth = F.grid_sample(
+        #     input=depth_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
+        # )  # [batch, N, 1]
+        # sampled_depth = sampled_depth.squeeze(2)  # [batch, 1, N]
+        # print(F"sampled depth size: {sampled_depth.shape}")
+        # # depth Outside
+        # sampled_depth_16 = F.grid_sample(
+        #     input=depth_images_outside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
+        # )  # [batch, N, 1]
+        # sampled_depth_16 = sampled_depth_16.squeeze(2)  # [batch, 1, N]
 
-        # depth Inside 
-        sampled_depth_84 = F.grid_sample(
-            input=depth_images_inside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        )  # [batch, N, 1]
-        sampled_depth_84 = sampled_depth_84.squeeze(2)  # [batch, 1, N]
+        # # depth Inside 
+        # sampled_depth_84 = F.grid_sample(
+        #     input=depth_images_inside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
+        # )  # [batch, N, 1]
+        # sampled_depth_84 = sampled_depth_84.squeeze(2)  # [batch, 1, N]
 
 
-        del(depth_images,depth_images_outside,depth_images_inside)
+        # del(depth_images,depth_images_outside,depth_images_inside)
 
         # sampled_origins = F.grid_sample(
         #     input=ray_origins, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
         # )  # [batch, N, 1]
         # sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
 
-        ## normals
-        surface_normals_grid = F.grid_sample(input=surface_normals, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-            ) # [batch, N, 3])
-        surface_normals_grid = surface_normals_grid.squeeze(2)
+        # ## normals
+        # surface_normals_grid = F.grid_sample(input=surface_normals, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
+        #     ) # [batch, N, 3])
+        # surface_normals_grid = surface_normals_grid.squeeze(2)
 
-        normal_samples_grid = F.grid_sample(
-            input=normal_samples, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-            ) # [batch, N, 3]
-        normal_samples_grid = normal_samples_grid.squeeze(2)
+        # normal_samples_grid = F.grid_sample(
+        #     input=normal_samples, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
+        #     ) # [batch, N, 3]
+        # normal_samples_grid = normal_samples_grid.squeeze(2)
 
-        normal_regularity_grid = F.grid_sample(
-            input=normal_regularity, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-            ) # [batch, N, 3]
-        normal_regularity_grid = normal_regularity_grid.squeeze(2)
+        # normal_regularity_grid = F.grid_sample(
+        #     input=normal_regularity, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
+        #     ) # [batch, N, 3]
+        # normal_regularity_grid = normal_regularity_grid.squeeze(2)
 
         # colors
         # if color_images is not None:
@@ -363,20 +423,24 @@ class TSDFfromSSAN:
 
         hyperparameter = 1
         print(surface_dist)
-        tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
-        tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
-        tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
+        # tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
+        # tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
+        # tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
 
         # print(f"tsdf_values_outside: {tsdf_values_outside}")
         # print(f"tsdf_values_inside: {tsdf_values_inside}")
         
 
-        tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
+        # tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
 
-        valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
+        #valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
         
         # Sequentially update the TSDF...
         for i in range(batch_size):
+
+            surface_points = depth_images[i]
+            print(surface_points)
+            assert False
                 
             valid_points_i = valid_points[i]
             valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
@@ -450,3 +514,231 @@ class TSDFfromSSAN:
             #     self.colors[valid_points_i_shape] = (
             #         old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
             #     ) / total_weights[:, None]
+
+@torch.no_grad()
+def export_ssan(
+    pipeline: Pipeline,
+    output_dir: Path,
+    downscale_factor: int = 2,
+    depth_output_name: str = "depth",
+    rgb_output_name: str = "rgb",
+    resolution: Union[int, List[int]] = field(default_factory=lambda: [256, 256, 256]),
+    batch_size: int = 10,
+    use_bounding_box: bool = True,
+    bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
+    bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+):
+    """Export a TSDF mesh from a pipeline.
+
+    Args:
+        pipeline: The pipeline to export the mesh from.
+        output_dir: The directory to save the mesh to.
+        downscale_factor: Downscale factor for the images.
+        depth_output_name: Name of the depth output.
+        rgb_output_name: Name of the RGB output.
+        resolution: Resolution of the TSDF volume or [x, y, z] resolutions individually.
+        batch_size: How many depth images to integrate per batch.
+        use_bounding_box: Whether to use a bounding box for the TSDF volume.
+        bounding_box_min: Minimum coordinates of the bounding box.
+        bounding_box_max: Maximum coordinates of the bounding box.
+    """
+
+
+    start_state = pipeline.state_dict()
+
+    device = pipeline.device
+    
+
+    dataparser_outputs = pipeline.datamanager.train_dataset._dataparser_outputs  # pylint: disable=protected-access
+
+    # initialize the TSDF volume
+    if not use_bounding_box:
+        aabb = dataparser_outputs.scene_box.aabb
+    else:
+        aabb = torch.tensor([bounding_box_min, bounding_box_max])
+    if isinstance(resolution, int):
+        volume_dims = torch.tensor([resolution] * 3)
+    elif isinstance(resolution, List):
+        volume_dims = torch.tensor(resolution)
+    else:
+        raise ValueError("Resolution must be an int or a list.")
+    tsdf_surface = TSDFfromSSAN.from_aabb(aabb, volume_dims=volume_dims)
+    # move TSDF to device
+    tsdf_surface.to(device)
+
+
+    ##Use a new instance of the nerfacto model with 3 depth samplers in ray outputs.
+    old_model = pipeline._model
+    old_model_states = old_model.state_dict()
+
+    pipeline._model = NerfactoModelTriDepth(
+        config=old_model.config, scene_box=old_model.scene_box, num_train_data=old_model.num_train_data
+    )
+    ##This is vital. Allows the new model to read outputs correctly. Prevents the massively blurry input images problem
+    pipeline.model.load_state_dict(old_model_states, True)
+
+    ## Transplanting old varibles to new model. May be worth seeing what is necessary however will take some time. 
+    pipeline.model.collider = old_model.collider
+    pipeline.model._modules = old_model._modules
+    pipeline.model._buffers = old_model._buffers
+    pipeline.model._parameters = old_model._parameters
+    pipeline.model.field = old_model.field
+
+    pipeline.cuda()
+    # camera per image supplied
+    cameras = dataparser_outputs.cameras.to(device)
+    #print(f"Cameras 1: {cameras.camera_to_worlds} ")
+    # we turn off distortion when populating the TSDF
+    color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
+        pipeline,
+        cameras,
+        rgb_output_name=rgb_output_name,
+        surface_depth_output_name=depth_output_name,
+        outside_depth_output_name= "depth_16",
+        inside_depth_output_name= "depth_84",
+        rendered_resolution_scaling_factor=1.0 / downscale_factor,
+        disable_distortion=True,
+    )
+    ## Normal Sampling##
+
+    ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
+    ## Nc in eq 12 of nerfmeshing.
+    linear_spaces = torch.linspace(0,1,10).cuda()
+    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device) 
+    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)  
+    print(depth_images_50.shape)
+    surface_normals = torch.tensor(np.array(surface_normals), device=device)
+    ray_origins = torch.tensor(np.array(ray_origins), device=device)
+    ray_directions = torch.tensor(np.array(ray_directions), device=device)
+    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+
+    print(f"ray: {ray_origins.shape}\ndepth: {depth_images_16.shape}")
+
+    depth_images_50 = ray_origins+(ray_directions*depth_images_50)
+    depth_images_16 = ray_origins+(ray_directions*depth_images_16)
+    depth_images_84 = ray_origins+(ray_directions*depth_images_84)
+    outside_positions = ray_origins+(ray_directions*depth_images_16)
+    inside_positions = ray_origins+(ray_directions*depth_images_84)
+
+
+    print(f"outside: {outside_positions[:,0,0,0]}")
+    print(f"inside: {inside_positions[:,0,0,0]}")
+
+    pos_difference = (inside_positions - outside_positions)
+    print(f"Pos_difference: {pos_difference[:,0,0,0]}")
+
+
+    pos_difference = pos_difference[None,:,:,:,:]
+    pos_difference = pos_difference.expand(10,-1,-1,-1,-1).cuda()
+
+    outside_expanded = outside_positions[None,:,:,:,:]
+    outside_expanded = outside_expanded.expand(10,-1,-1,-1,-1)
+    linear_spaces_exp = torch.empty_like(pos_difference)
+    counter =0
+    for s in linear_spaces:
+        linear_spaces_exp[counter,:,:,:,:] = s
+        counter = counter+1
+    print(linear_spaces_exp)
+    print(linear_spaces_exp.shape)
+    # print(distance_expanded.shape)
+    linear_spaces_exp = (linear_spaces_exp*pos_difference)
+    normal_position_samples = outside_expanded + linear_spaces_exp
+    
+    #print(f"Samples: {distance_expanded[0,:,0,0,0]}\n, {distance_expanded[0,:,0,0,1]}\n,{distance_expanded[0,:,0,0,2]}")
+
+    # print(f"Normal position Samples: {normal_position_samples[0,:,0,0,0]}\n, {normal_position_samples[0,:,0,0,1]}\n,{normal_position_samples[0,:,0,0,2]}")
+    print(f"normal positions shape: {normal_position_samples.shape}")
+    
+    ##Slicing to fit onto gpu
+    normal_samples = torch.zeros_like(normal_position_samples)
+    i = 0
+
+    # memory usage seems stable
+    for n in torch.chunk(normal_position_samples,normal_position_samples.shape[0],dim=0):
+        n = n.squeeze()
+        print(f"normals at the {i} position in ray being calculated")
+        j=0
+        for m in torch.chunk(n,n.shape[0],dim=0):
+            m.squeeze
+            ##pipeline.model.field.density_fn(n)
+            ray_samples = RaySamples(
+                frustums=Frustums(
+                    origins=m,
+                    directions=torch.ones_like(m),
+                    starts=torch.zeros_like(m[..., :1]),
+                    ends=torch.zeros_like(m[..., :1]),
+                    pixel_area=torch.ones_like(m[..., :1]),
+                ),
+                camera_indices= ray_cam_inds[i,j]
+            )
+
+            normal_slice = pipeline.model.field.forward(ray_samples,True)[FieldHeadNames.NORMALS]
+
+            normal_samples[i,j,:,:,:] = normal_slice
+            j = j+1
+
+            
+            del(normal_slice,ray_samples)
+
+        i = i+1
+    
+    del(ray_cam_inds)
+
+    print(f"normalsamples : {normal_samples.shape}")
+
+    normal_samples = normal_samples.sum(dim=0)
+    normal_samples.squeeze()
+
+    ### Max regularity of 10 (as in paper) or the number of normal points sampled per ray. 
+    normal_regularity = torch.linalg.norm(normal_samples,dim=3)[:,:,:,None]
+
+    print(normal_regularity)
+    print(normal_regularity.shape)
+    print(f"{normal_samples[22,12,5,:]} has magnitude {normal_regularity[22,12,5,:]}")
+    # camera extrinsics and intrinsics
+    c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
+    # make c2w homogeneous
+    c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
+    c2w[:, 3, 3] = 1
+    K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
+    color_images = torch.tensor(np.array(color_images), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
+    depth_images_50 = torch.tensor(depth_images_50, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_16 = torch.tensor(depth_images_16, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    depth_images_84 = torch.tensor(depth_images_84, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    surface_normals = torch.tensor(surface_normals, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
+    normal_samples = torch.tensor(normal_samples, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
+    normal_regularity = torch.tensor(normal_regularity, device=device).permute(0,3,1,2)   # shape (N, 1, H, W)
+
+    print(depth_images_50.shape)
+    
+    ray_origins = torch.tensor(np.array(ray_origins), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    CONSOLE.print("Integrating the Surface TSDF")
+    for i in range(0, len(c2w), batch_size):
+        tsdf_surface.integrate_tri_tsdf(
+            c2w[i : i + batch_size],
+            K[i : i + batch_size],
+            depth_images_50[i : i + batch_size],
+            depth_images_16[i : i + batch_size],
+            depth_images_84[i : i + batch_size],
+            ray_origins[i : i + batch_size],
+            surface_normals[i:i+batch_size],
+            normal_samples[i:i+batch_size],
+            normal_regularity[i:i+batch_size],
+            ##color_images=color_images[i : i + batch_size],
+        )
+
+    surfaceHyperparameter = 0.1
+
+    CONSOLE.print("Computing Mesh")
+
+
+    mesh_surface = tsdf_surface.get_mesh()
+
+    print(f"surface Values: {tsdf_surface.values.shape}")
+
+    tsdf_surface.export_mesh(mesh_surface, filename=str(output_dir / "ssan_mesh_surface.ply"))
+
+    CONSOLE.print("Saved SSAN Mesh")

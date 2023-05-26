@@ -30,9 +30,9 @@ import numpy as np
 import pymeshlab
 import torch
 import torch.nn.functional as F
-from tinycudann import NetworkWithInputEncoding
 from rich.console import Console
 from skimage import measure
+from tinycudann import NetworkWithInputEncoding
 from torchtyping import TensorType
 
 import nerfstudio.fields.nerfacto_field
@@ -521,8 +521,6 @@ class TSDFfromSSAN:
     """weights of Normal for each voxel in TSDF"""
     #####
     
-    surface_mlp = 
-
     colors: TensorType["xdim", "ydim", "zdim", 3]
     """TSDF colors for each voxel."""
     voxel_size: TensorType[3]

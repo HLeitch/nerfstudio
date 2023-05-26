@@ -24,7 +24,7 @@ from typing_extensions import Annotated, Literal
 import nerfstudio.cameras.cameras as nscam
 import nerfstudio.exporter.marching_cubes_utils as mcUtils
 from nerfstudio.cameras.rays import Frustums, RayBundle, RaySamples
-from nerfstudio.exporter import texture_utils, tsdf_utils
+from nerfstudio.exporter import ssan_utils, texture_utils, tsdf_utils
 from nerfstudio.exporter.exporter_utils import (
     collect_camera_poses,
     density_sampler,
@@ -713,7 +713,7 @@ class ExportMarchingTetTSDFMesh(Exporter):
 
         _, pipeline, _ = eval_setup(self.load_config)
 
-        tsdf_utils.export_tri_depth_tsdf(
+        ssan_utils.export_ssan(
             pipeline,
             self.output_dir,
             self.downscale_factor,
