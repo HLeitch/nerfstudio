@@ -437,9 +437,11 @@ class TSDFfromSSAN:
         #valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
 
         
-        optimiser = torch.optim.Adam(self.surface_mlp.parameters(), betas=(0.9,0.99),eps=10e-15)
+        optimiser = torch.optim.Adam(self.surface_mlp.parameters(), lr=0.05, betas=(0.9,0.99),eps=10e-15)
         loss = torch.nn.L1Loss()
-        for n in range(1000):
+        print("###### NEW IMAGE ######")
+        self.surface_mlp.train(True)
+        for n in range(1):
             sum_losses = 0
             # Sequentially update the TSDF...
             for i in range(batch_size):
@@ -457,15 +459,14 @@ class TSDFfromSSAN:
                 _device = surface_points.device
 
 
-                outputs = self.surface_mlp(inputs) ##(surface [0], normal [1-3])
+                outputs = self.surface_mlp(inputs) ##output dims: (surface [:,0], normal [:,1-3])
                 
                 ###As we know the desired outputs for each of the depth measurements, we can use outputs to shape 
                 # our ground truth
                 ground_truth = torch.cat((torch.zeros((surface_points.shape[0],1),device=_device),
                                         torch.ones((outside_points.shape[0],1),device=_device),
                                         -torch.ones((inside_points.shape[0],1),device=_device)),dim=0)
-                
-                surface_loss_value = loss(outputs[0], ground_truth)
+                surface_loss_value = loss(outputs[:,0], ground_truth.flatten())
 
                 ##testing
                 sum_losses+=surface_loss_value
@@ -473,7 +474,6 @@ class TSDFfromSSAN:
                 surface_loss_value.backward()
                 optimiser.step()
             print(f"avgloss epoch {n} ---> {sum_losses/batch_size}")
-        assert False
 
         ####Very very old. Taken from original tsdf processing.#####
 
@@ -673,8 +673,6 @@ def export_ssan(
     for s in linear_spaces:
         linear_spaces_exp[counter,:,:,:,:] = s
         counter = counter+1
-    print(linear_spaces_exp)
-    print(linear_spaces_exp.shape)
     # print(distance_expanded.shape)
     linear_spaces_exp = (linear_spaces_exp*pos_difference)
     normal_position_samples = outside_expanded + linear_spaces_exp
@@ -752,19 +750,22 @@ def export_ssan(
     # ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     CONSOLE.print("Integrating the Surface TSDF")
-    for i in range(0, len(c2w), batch_size):
-        tsdf_surface.integrate_tri_tsdf(
-            c2w[i : i + batch_size],
-            K[i : i + batch_size],
-            depth_images_50[i : i + batch_size],
-            depth_images_16[i : i + batch_size],
-            depth_images_84[i : i + batch_size],
-            ray_origins[i : i + batch_size],
-            surface_normals[i:i+batch_size],
-            normal_samples[i:i+batch_size],
-            normal_regularity[i:i+batch_size],
-            ##color_images=color_images[i : i + batch_size],
-        )
+
+    for e in range(100):
+        print(f"### EPOCH {e}####\n################")
+        for i in range(0, len(c2w), batch_size):
+            tsdf_surface.integrate_tri_tsdf(
+                c2w[i : i + batch_size],
+                K[i : i + batch_size],
+                depth_images_50[i : i + batch_size],
+                depth_images_16[i : i + batch_size],
+                depth_images_84[i : i + batch_size],
+                ray_origins[i : i + batch_size],
+                surface_normals[i:i+batch_size],
+                normal_samples[i:i+batch_size],
+                normal_regularity[i:i+batch_size],
+                ##color_images=color_images[i : i + batch_size],
+            )
 
     surfaceHyperparameter = 0.1
 
