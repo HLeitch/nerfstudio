@@ -712,7 +712,7 @@ class ExportMarchingTetTSDFMesh(Exporter):
             self.output_dir.mkdir(parents=True)
 
         _, pipeline, _ = eval_setup(self.load_config)
-
+        ##torch.set_anomaly_enabled(True,True)
         ssan_utils.export_ssan(
             pipeline,
             self.output_dir,

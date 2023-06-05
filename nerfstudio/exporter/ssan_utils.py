@@ -124,7 +124,7 @@ class TSDFfromSSAN:
         weights = torch.zeros(volume_dims.tolist())
         colors = torch.zeros(volume_dims.tolist() + [3])
 
-
+        ##growth_factor = np.exp((np.log(2048)-np.log(16)/(15-1)))
         ###
         ##taken from nerfacto field parameters##
         surface_mlp = tcnn.NetworkWithInputEncoding(
@@ -132,7 +132,7 @@ class TSDFfromSSAN:
             n_output_dims=1 + 3,
             encoding_config={
                 "otype": "HashGrid",
-                "n_levels": 15,
+                "n_levels": 16,
                 "n_features_per_level": 2,
                 "log2_hashmap_size": 19,
                 "base_resolution": 16,
@@ -148,7 +148,7 @@ class TSDFfromSSAN:
                 "seed": 210799
             },
         )
-        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.05, betas=(0.9,0.99),eps=10e-15)
+        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.005, betas=(0.9,0.99),eps=10e-15)
 
         # TODO: move to device
 
@@ -451,6 +451,7 @@ class TSDFfromSSAN:
                 sum_losses = 0
                 # Sequentially update the TSDF...
                 for i in range(batch_size):
+                    
                     surface_points = depth_images[i]
                     surface_points = surface_points.reshape(3,-1).t()
 
@@ -458,33 +459,50 @@ class TSDFfromSSAN:
                     outside_points = outside_points.reshape(3,-1).t()
                     inside_points = depth_images_inside[i]
                     inside_points = inside_points.reshape(3,-1).t()
-
-                    inputs = torch.cat((surface_points,outside_points,inside_points))
-
-                    _device = surface_points.device
-                    self.optimiser.zero_grad()
-
-                    ##output dims: (surface [:,0], normal [:,1-3])
-                    outputs = self.surface_mlp(inputs) 
                     
-                    ###As we know the desired outputs for each of the depth measurements, we can use outputs to shape 
-                    # our ground truth
-                    ground_truth = torch.cat((torch.zeros((surface_points.shape[0],1),device=_device),
-                                            -torch.ones((outside_points.shape[0],1),device=_device),
-                                            torch.ones((inside_points.shape[0],1),device=_device)),dim=0)
-                    
-                    outputs_surface,outputs_outside,outputs_inside = torch.split(outputs[:,0],3)
+                    batch_start_idx = 0
+                    spaced_array = np.linspace(0,surface_points.shape[0],10,dtype=int)
+                    next_idx = 1
+                    for x in spaced_array:
+                        if(next_idx <10):
+                            inputs = torch.cat((surface_points[x:spaced_array[next_idx]],
+                                                outside_points[x:spaced_array[next_idx]],
+                                                inside_points[x:spaced_array[next_idx]]))
+                            
 
-                    surface_loss_value = outputs[:,0] + ground_truth.flatten()
-                    surface_loss_value = surface_loss_value.pow(2)
-                    surface_loss_value = surface_loss_value.mean()
-                    ##testing
-                    sum_losses+=surface_loss_value
 
-                    
-                    surface_loss_value.backward()
-                    self.optimiser.step()
-                print(f"avgloss epoch {n} ---> {sum_losses/batch_size}")
+                            ##output dims: (surface [:,0], normal [:,1-3])
+                            outputs = self.surface_mlp(inputs) 
+                            
+                            ###As we know the desired outputs for each of the depth measurements, we can use outputs to shape 
+                            # our ground truth
+                            # ground_truth = torch.cat((torch.zeros((surface_points.shape[0],1),device=_device),
+                            #                         -torch.ones((outside_points.shape[0],1),device=_device),
+                            #                         torch.ones((inside_points.shape[0],1),device=_device)),dim=0)
+
+                            ##each third is a sample of a different density
+                            output_divider = int(outputs.shape[0]/3)
+                            
+                            outputs_surface = outputs[0:output_divider,0]
+                            outputs_outside = outputs[output_divider:output_divider*2,0]
+                            outputs_inside = outputs[output_divider*2:,0]
+                            ##print(f"###########################\nsurface = {outputs_surface.shape}, outside = {outputs_outside.shape}, inside = {outputs_inside.shape}")
+                            print(f"surface values: {outputs[:,0]}")
+                            surface_loss_value = (((outputs_outside-(torch.ones_like(outputs_outside)))**2) + 
+                                                (outputs_surface)**2 + 
+                                                ((outputs_inside+(torch.ones_like(outputs_outside)))**2))
+                            print(f"Individual surface Loss: {surface_loss_value}")
+                            surface_loss_value = surface_loss_value.sum()
+                            print(f"sum surface value {surface_loss_value}")
+                            ##testing
+                            sum_losses+=surface_loss_value
+                            self.optimiser.zero_grad()
+                            surface_loss_value.backward()
+                            self.optimiser.step()
+                            next_idx += 1
+                            input()
+                            
+                print(f"avgloss epoch {n} ---> {sum_losses/outputs[:,0].shape[0]}")
 
             ####Very very old. Taken from original tsdf processing.#####
 
