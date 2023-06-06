@@ -6,6 +6,7 @@ SSAN utils.
 
 from __future__ import annotations
 
+import time as time
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -323,6 +324,7 @@ class TSDFfromSSAN:
         surface_normals: TensorType["batch", 3, "height", "width"],
         normal_samples: TensorType["batch", 3, "height", "width"],
         normal_regularity: TensorType["batch", 1, "height", "width"],
+        profiler,
         ##color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
         mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
     ):
@@ -446,8 +448,13 @@ class TSDFfromSSAN:
 
         loss = torch.nn.L1Loss()
         print("###### NEW IMAGE ######")
+
+        ##debug
+        ##torch.set_printoptions(profile="full")
+
+
         with torch.enable_grad():
-            for n in range(10):
+            for n in range(1):
                 sum_losses = 0
                 # Sequentially update the TSDF...
                 for i in range(batch_size):
@@ -488,9 +495,11 @@ class TSDFfromSSAN:
                             outputs_inside = outputs[output_divider*2:,0]
                             ##print(f"###########################\nsurface = {outputs_surface.shape}, outside = {outputs_outside.shape}, inside = {outputs_inside.shape}")
                             print(f"surface values: {outputs[:,0]}")
-                            surface_loss_value = (((outputs_outside-(torch.ones_like(outputs_outside)))**2) + 
+
+                            ##surface loss Li in NerfMeshing
+                            surface_loss_value = (((outputs_outside-(torch.ones_like(outputs_outside)/10))**2) + 
                                                 (outputs_surface)**2 + 
-                                                ((outputs_inside+(torch.ones_like(outputs_outside)))**2))
+                                                ((outputs_inside+(torch.ones_like(outputs_outside)/10))**2))
                             print(f"Individual surface Loss: {surface_loss_value}")
                             surface_loss_value = surface_loss_value.sum()
                             print(f"sum surface value {surface_loss_value}")
@@ -499,8 +508,9 @@ class TSDFfromSSAN:
                             self.optimiser.zero_grad()
                             surface_loss_value.backward()
                             self.optimiser.step()
+                            profiler.step()
                             next_idx += 1
-                            input()
+                            ##input()
                             
                 print(f"avgloss epoch {n} ---> {sum_losses/outputs[:,0].shape[0]}")
 
@@ -666,7 +676,7 @@ def export_ssan(
 
     ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
     ## Nc in eq 12 of nerfmeshing.
-    linear_spaces = torch.linspace(0,1,10).cuda()
+    linear_spaces = torch.linspace(0,1,1).cuda()
     depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
     depth_images_16 = torch.tensor(np.array(depth_images_16), device=device) 
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)  
@@ -696,7 +706,9 @@ def export_ssan(
     pos_difference = pos_difference.expand(10,-1,-1,-1,-1).cuda()
 
     outside_expanded = outside_positions[None,:,:,:,:]
-    outside_expanded = outside_expanded.expand(10,-1,-1,-1,-1)
+
+    ##This can be removed. Normals sampled from tsdf.
+    outside_expanded = outside_expanded.expand(1,-1,-1,-1,-1)
     linear_spaces_exp = torch.empty_like(pos_difference)
     counter =0
     for s in linear_spaces:
@@ -717,34 +729,34 @@ def export_ssan(
 
     i = 0
 
-    # memory usage seems stable
-    for n in torch.chunk(normal_position_samples,normal_position_samples.shape[0],dim=0):
-        n = n.squeeze()
-        print(f"normals at the {i} position in ray being calculated")
-        j=0
-        for m in torch.chunk(n,n.shape[0],dim=0):
-            m.squeeze
-            ##pipeline.model.field.density_fn(n)
-            ray_samples = RaySamples(
-                frustums=Frustums(
-                    origins=m,
-                    directions=torch.ones_like(m),
-                    starts=torch.zeros_like(m[..., :1]),
-                    ends=torch.zeros_like(m[..., :1]),
-                    pixel_area=torch.ones_like(m[..., :1]),
-                ),
-                camera_indices= ray_cam_inds[i,j]
-            )
+    # # memory usage seems stable
+    # for n in torch.chunk(normal_position_samples,normal_position_samples.shape[0],dim=0):
+    #     n = n.squeeze()
+    #     print(f"normals at the {i} position in ray being calculated")
+    #     j=0
+    #     for m in torch.chunk(n,n.shape[0],dim=0):
+    #         m.squeeze
+    #         ##pipeline.model.field.density_fn(n)
+    #         ray_samples = RaySamples(
+    #             frustums=Frustums(
+    #                 origins=m,
+    #                 directions=torch.ones_like(m),
+    #                 starts=torch.zeros_like(m[..., :1]),
+    #                 ends=torch.zeros_like(m[..., :1]),
+    #                 pixel_area=torch.ones_like(m[..., :1]),
+    #             ),
+    #             camera_indices= ray_cam_inds[i,j]
+    #         )
 
-            normal_slice = pipeline.model.field.forward(ray_samples,True)[FieldHeadNames.NORMALS]
+    #         normal_slice = pipeline.model.field.forward(ray_samples,True)[FieldHeadNames.NORMALS]
 
-            normal_samples[i,j,:,:,:] = normal_slice
-            j = j+1
+    #         normal_samples[i,j,:,:,:] = normal_slice
+    #         j = j+1
 
             
-            del(normal_slice,ray_samples)
+    #         del(normal_slice,ray_samples)
 
-        i = i+1
+    #     i = i+1
     
     del(ray_cam_inds)
 
@@ -780,21 +792,35 @@ def export_ssan(
     # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     CONSOLE.print("Integrating the Surface TSDF")
 
-    for e in range(10):
-        print(f"### EPOCH {e}####\n################")
-        for i in range(0, len(c2w), batch_size):
-            tsdf_surface.integrate_tri_tsdf(
-                c2w[i : i + batch_size],
-                K[i : i + batch_size],
-                depth_images_50[i : i + batch_size],
-                depth_images_16[i : i + batch_size],
-                depth_images_84[i : i + batch_size],
-                ray_origins[i : i + batch_size],
-                surface_normals[i:i+batch_size],
-                normal_samples[i:i+batch_size],
-                normal_regularity[i:i+batch_size],
-                ##color_images=color_images[i : i + batch_size],
-            )
+    ##profiler 
+    with torch.profiler.profile(
+        schedule=torch.profiler.schedule(
+            wait=2,
+            warmup=2,
+            active=6,
+            repeat=1),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(f'./log/Surface_training_{int(time.time())}'),
+        record_shapes=True,
+        profile_memory=True,
+        with_stack=True
+    ) as profiler:  
+
+        for e in range(10):
+            print(f"### EPOCH {e}####\n################")
+            for i in range(0, len(c2w), batch_size):
+                tsdf_surface.integrate_tri_tsdf(
+                    c2w[i : i + batch_size],
+                    K[i : i + batch_size],
+                    depth_images_50[i : i + batch_size],
+                    depth_images_16[i : i + batch_size],
+                    depth_images_84[i : i + batch_size],
+                    ray_origins[i : i + batch_size],
+                    surface_normals[i:i+batch_size],
+                    normal_samples[i:i+batch_size],
+                    normal_regularity[i:i+batch_size],
+                    profiler,
+                    ##color_images=color_images[i : i + batch_size],
+                )
 
     surfaceHyperparameter = 0.1
 

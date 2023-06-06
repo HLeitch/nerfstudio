@@ -708,6 +708,8 @@ class ExportMarchingTetTSDFMesh(Exporter):
     def main(self) -> None:
         """Export mesh"""
 
+        torch.set_default_dtype(torch.float32)
+
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True)
 
