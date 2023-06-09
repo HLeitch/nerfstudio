@@ -85,6 +85,25 @@
         "--pipeline.datamanager.train-dataparser.scene-scale=4"
       ]
     },
+
+    {
+      "name": "Python: export SSAN",
+      "type": "python",
+      "request": "launch",
+      "program": "scripts/exporter.py",
+      "console": "integratedTerminal",
+      "args": [
+        "Marching-tet",
+        //Change to any preprepared nerfacto model. 
+        "--load-config=outputs\\test-sphere\\nerfacto\\2023-04-27_164800/config.yml",
+        "--output-dir=exports/tri-tsdf/",
+        "--use-bounding-box=True",
+        "--bounding-box-min", "0.004000000000000031", "-0.25200000000000006", "-0.11099999999999997",
+        "--bounding-box-max", "0.30400000000000005", "0.04799999999999993","0.189"
+
+      ]
+
+    }
     {
       "name": "Python: train semantic_nerfw",
       "type": "python",

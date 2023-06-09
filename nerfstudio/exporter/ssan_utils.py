@@ -470,8 +470,6 @@ class TSDFfromSSAN:
                     ##Indexing means this value cannot be lower than 2
                     batches = 10
 
-
-
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
                     for x in spaced_array:
@@ -480,13 +478,14 @@ class TSDFfromSSAN:
                                                 outside_points[x:spaced_array[next_idx]],
                                                 inside_points[x:spaced_array[next_idx]]))
                             
-
-
                             ##output dims: (surface [:,0], normal [:,1-3])
                             outputs = self.surface_mlp(inputs).to(device)
+
+                            if torch.isnan(outputs).any():
+                                continue
+
                             surface_loss_value = self.surface_loss(outputs)
-                            if (next_idx %9 == 0): print(f"outputs = {outputs}")
-                            ##testing
+                            #print(f"outputs = {outputs}")
                             sum_losses+=surface_loss_value
                             self.optimiser.zero_grad()
                             surface_loss_value.backward()
@@ -539,6 +538,9 @@ class TSDFfromSSAN:
         surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)/10))**2) + 
                             surface_mid**2 + 
                             ((surface_inside+(torch.ones_like(surface_outside)/10))**2))
+        if torch.isnan(surface_loss_value).any():
+            print("help")
+
         ##print(f"Individual surface Loss: {surface_loss_value}")
         surface_loss_value = surface_loss_value.sum()
 
@@ -752,8 +754,8 @@ def export_ssan(
         schedule=torch.profiler.schedule(
             wait=0,
             warmup=1,
-            active=10,
-            repeat=4),
+            active=1,
+            repeat=1),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(f'./log/Surface_training_{int(time.time())}'),
         record_shapes=True,
         profile_memory=True,
