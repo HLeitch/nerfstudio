@@ -451,7 +451,7 @@ class TSDFfromSSAN:
 
         ##debug
         ##torch.set_printoptions(profile="full")
-
+        device = depth_images.device
 
         with torch.enable_grad():
             for n in range(1):
@@ -468,10 +468,10 @@ class TSDFfromSSAN:
                     inside_points = inside_points.reshape(3,-1).t()
                     
                     batch_start_idx = 0
-                    spaced_array = np.linspace(0,surface_points.shape[0],10,dtype=int)
+                    spaced_array = np.linspace(0,surface_points.shape[0],2,dtype=int)
                     next_idx = 1
                     for x in spaced_array:
-                        if(next_idx <10):
+                        if(next_idx <2):
                             inputs = torch.cat((surface_points[x:spaced_array[next_idx]],
                                                 outside_points[x:spaced_array[next_idx]],
                                                 inside_points[x:spaced_array[next_idx]]))
@@ -479,29 +479,8 @@ class TSDFfromSSAN:
 
 
                             ##output dims: (surface [:,0], normal [:,1-3])
-                            outputs = self.surface_mlp(inputs) 
-                            
-                            ###As we know the desired outputs for each of the depth measurements, we can use outputs to shape 
-                            # our ground truth
-                            # ground_truth = torch.cat((torch.zeros((surface_points.shape[0],1),device=_device),
-                            #                         -torch.ones((outside_points.shape[0],1),device=_device),
-                            #                         torch.ones((inside_points.shape[0],1),device=_device)),dim=0)
-
-                            ##each third is a sample of a different density
-                            output_divider = int(outputs.shape[0]/3)
-                            
-                            outputs_surface = outputs[0:output_divider,0]
-                            outputs_outside = outputs[output_divider:output_divider*2,0]
-                            outputs_inside = outputs[output_divider*2:,0]
-                            ##print(f"###########################\nsurface = {outputs_surface.shape}, outside = {outputs_outside.shape}, inside = {outputs_inside.shape}")
-                            print(f"surface values: {outputs[:,0]}")
-
-                            ##surface loss Li in NerfMeshing
-                            surface_loss_value = (((outputs_outside-(torch.ones_like(outputs_outside)/10))**2) + 
-                                                (outputs_surface)**2 + 
-                                                ((outputs_inside+(torch.ones_like(outputs_outside)/10))**2))
-                            print(f"Individual surface Loss: {surface_loss_value}")
-                            surface_loss_value = surface_loss_value.sum()
+                            outputs = self.surface_mlp(inputs).to(device)
+                            surface_loss_value = self.surface_loss(outputs)
                             print(f"sum surface value {surface_loss_value}")
                             ##testing
                             sum_losses+=surface_loss_value
@@ -514,81 +493,50 @@ class TSDFfromSSAN:
                             
                 print(f"avgloss epoch {n} ---> {sum_losses/outputs[:,0].shape[0]}")
 
-            ####Very very old. Taken from original tsdf processing.#####
+    def normal_smoothness_loss(self,output_prediction: torch.Tensor):
+        output_divider = int(output_prediction.shape[0]/3)
+                                
+        normal_outside = output_prediction[output_divider:output_divider*2,1:]
+        normal_inside = output_prediction[output_divider*2:,1:]
 
-                # valid_points_i = valid_points[i]
-                # valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
-                
-
-                # # the old values
-                # old_tsdf_values_i = self.values[valid_points_i_shape]
-                # old_weights_i = self.weights[valid_points_i_shape]
-
-
-                # old_normal_values_i = self.normal_values[valid_points_i_shape]
-                # old_normal_weights_i = self.normal_weights[valid_points_i_shape]
-
-                # # the new values
-                # # TODO: let the new weight be configurable
-
-                # # Rescale to limits of [-0.1,0.1]
-                # new_tsdf_values_surface_i = tsdf_values_surface[i][valid_points_i] 
-                # new_tsdf_values_outside_i = tsdf_values_outside[i][valid_points_i]
-                # new_tsdf_values_inside_i = tsdf_values_inside[i][valid_points_i]
-
-                # new_normal_values = surface_normals_grid[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-                # print(f"normal regularity {normal_regularity.shape}")
-                # normal_regularity_i = normal_regularity_grid[i][valid_points_i]
-                # normal_samples_i = normal_samples_grid[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-
-                
-                # # print(f"Inside: {new_tsdf_values_inside_i}")
-                # #print(f"SurfaceAll: {tsdf_values_surface.shape}")
-                # print(f"Surface: {valid_points_i}")
-                # # print(f"Outside: {new_tsdf_values_outside_i}")
+        norm_difference = (normal_inside - normal_outside)
+        # print(f"Pos_difference: {pos_difference[:,0,0,0]}")
 
 
-                # ##To give a magnitiude similar to NeRFMeshing paper, we muliply loss by 0.1. This also means we
-                # ## can keep the weight clamps at 1.
-                # surface_loss = (((new_tsdf_values_outside_i)**2)+
-                #                 (new_tsdf_values_surface_i**2)+
-                #                 ((new_tsdf_values_inside_i)**2))
-                
-                # #print(f"Surface Loss min: {surface_loss.min()}. Surface loss count: {surface_loss.numel()}. Loss per value: {surface_loss.sum()/surface_loss.numel()}")
-                # print(f"Surface Loss elementwise: {surface_loss}")
+        norm_difference = norm_difference[None,:,:,:,:]
+        norm_difference = norm_difference.expand(10,-1,-1,-1,-1).cuda()
 
-                # ## Theoretical maximum loss is 5 when hyperparameter and range is 1 and -1 -> 1. If the loss is greater or equal to 5,
-                # ## no weight is added. IMPLIMENT NEXT 
-                # new_weights_i =(1.0/((0.1+surface_loss))) ##torch.abs((5.01-surface_loss)/5)##
+        outside_expanded = normal_outside[None,:,:,:,:]
 
-                # total_weights = old_weights_i + new_weights_i
-                # print(f"Old Weights: {total_weights}")
+        ##This can be removed. Normals sampled from tsdf.
+        outside_expanded = outside_expanded.expand(1,-1,-1,-1,-1)
+        linear_spaces_exp = torch.empty_like(norm_difference)
+        counter =0
+        for s in linear_spaces:
+            linear_spaces_exp[counter,:,:,:,:] = s
+            counter = counter+1
 
-                # self.values[valid_points_i_shape] = (
-                #     old_tsdf_values_i * old_weights_i + new_tsdf_values_surface_i * new_weights_i
-                # ) / total_weights
-                # self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
 
-                # ##Normal Weight Calculation
-                # normal_loss = 10 - normal_regularity_grid
-                # normal_loss = normal_loss**2
-                # ##prevents weight from exceeding 1
-                # normal_weight = (1.0/(1+normal_loss))
-                # del(normal_loss)
+    def surface_loss(self,output_prediction: torch.Tensor): 
+        ##divide back into 16,50,84 densities
+        output_divider = int(output_prediction.shape[0]/3)
+                                
+        surface_mid = output_prediction[0:output_divider,0]
+        surface_outside = output_prediction[output_divider:output_divider*2,0]
+        surface_inside = output_prediction[output_divider*2:,0]
+        ##print(f"###########################\nsurface = {outputs_surface.shape}, outside = {outputs_outside.shape}, inside = {outputs_inside.shape}")
+        print(f"surface values: {output_prediction[:,0]}")
 
-                # ##Normal regularization
-                # regularization_loss = torch.tensor(torch.norm((new_normal_values - old_normal_values_i),dim=1)).pow(2)
-                # print(f"regularization loss = {regularization_loss}")
+        ##surface loss Li in NerfMeshing                            
+        ##As we know the desired outputs for each of the depth measurements, we can easily calculate euclidian 
+        ## distances to each
+        surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)/10))**2) + 
+                            surface_mid**2 + 
+                            ((surface_inside+(torch.ones_like(surface_outside)/10))**2))
+        print(f"Individual surface Loss: {surface_loss_value}")
+        surface_loss_value = surface_loss_value.sum()
 
-                # assert False
-
-                # # if color_images is not None:
-                # #     old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
-                # #     new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-                # #     self.colors[valid_points_i_shape] = (
-                # #         old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i[:, None]
-                # #     ) / total_weights[:, None]
-
+        return surface_loss_value
 def export_ssan(
     pipeline: Pipeline,
     output_dir: Path,
@@ -792,19 +740,21 @@ def export_ssan(
     # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     CONSOLE.print("Integrating the Surface TSDF")
 
+
     ##profiler 
     with torch.profiler.profile(
         schedule=torch.profiler.schedule(
-            wait=2,
-            warmup=2,
-            active=6,
-            repeat=1),
+            wait=0,
+            warmup=1,
+            active=1,
+            repeat=6),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(f'./log/Surface_training_{int(time.time())}'),
-        record_shapes=True,
+        ##record_shapes=True,
         profile_memory=True,
-        with_stack=True
+    #     ##with_stack=True
     ) as profiler:  
 
+   
         for e in range(10):
             print(f"### EPOCH {e}####\n################")
             for i in range(0, len(c2w), batch_size):
