@@ -467,11 +467,15 @@ class TSDFfromSSAN:
                     inside_points = depth_images_inside[i]
                     inside_points = inside_points.reshape(3,-1).t()
                     
-                    batch_start_idx = 0
-                    spaced_array = np.linspace(0,surface_points.shape[0],2,dtype=int)
+                    ##Indexing means this value cannot be lower than 2
+                    batches = 10
+
+
+
+                    spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
                     for x in spaced_array:
-                        if(next_idx <2):
+                        if(next_idx <batches):
                             inputs = torch.cat((surface_points[x:spaced_array[next_idx]],
                                                 outside_points[x:spaced_array[next_idx]],
                                                 inside_points[x:spaced_array[next_idx]]))
@@ -481,17 +485,19 @@ class TSDFfromSSAN:
                             ##output dims: (surface [:,0], normal [:,1-3])
                             outputs = self.surface_mlp(inputs).to(device)
                             surface_loss_value = self.surface_loss(outputs)
-                            print(f"sum surface value {surface_loss_value}")
+                            if (next_idx %9 == 0): print(f"outputs = {outputs}")
                             ##testing
                             sum_losses+=surface_loss_value
                             self.optimiser.zero_grad()
                             surface_loss_value.backward()
-                            self.optimiser.step()
+                            
                             profiler.step()
                             next_idx += 1
-                            ##input()
+            
+                            #input()
                             
-                print(f"avgloss epoch {n} ---> {sum_losses/outputs[:,0].shape[0]}")
+                print(f"avgloss image ---> {sum_losses/outputs[:,0].shape[0]}")
+            self.optimiser.step()
 
     def normal_smoothness_loss(self,output_prediction: torch.Tensor):
         output_divider = int(output_prediction.shape[0]/3)
@@ -525,7 +531,7 @@ class TSDFfromSSAN:
         surface_outside = output_prediction[output_divider:output_divider*2,0]
         surface_inside = output_prediction[output_divider*2:,0]
         ##print(f"###########################\nsurface = {outputs_surface.shape}, outside = {outputs_outside.shape}, inside = {outputs_inside.shape}")
-        print(f"surface values: {output_prediction[:,0]}")
+        ##print(f"surface values: {output_prediction[:,0]}")
 
         ##surface loss Li in NerfMeshing                            
         ##As we know the desired outputs for each of the depth measurements, we can easily calculate euclidian 
@@ -533,7 +539,7 @@ class TSDFfromSSAN:
         surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)/10))**2) + 
                             surface_mid**2 + 
                             ((surface_inside+(torch.ones_like(surface_outside)/10))**2))
-        print(f"Individual surface Loss: {surface_loss_value}")
+        ##print(f"Individual surface Loss: {surface_loss_value}")
         surface_loss_value = surface_loss_value.sum()
 
         return surface_loss_value
@@ -746,10 +752,10 @@ def export_ssan(
         schedule=torch.profiler.schedule(
             wait=0,
             warmup=1,
-            active=1,
-            repeat=6),
+            active=10,
+            repeat=4),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(f'./log/Surface_training_{int(time.time())}'),
-        ##record_shapes=True,
+        record_shapes=True,
         profile_memory=True,
     #     ##with_stack=True
     ) as profiler:  
