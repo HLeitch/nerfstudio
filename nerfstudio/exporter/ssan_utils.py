@@ -20,6 +20,7 @@ import torch
 import torch.nn.functional as F
 from rich.console import Console
 from skimage import measure
+from torch.utils.tensorboard import SummaryWriter
 from torchtyping import TensorType
 
 import nerfstudio.fields.nerfacto_field
@@ -167,7 +168,6 @@ class TSDFfromSSAN:
 
         vertices_indices = np.round(vertices).astype(int)
         colors = self.colors[vertices_indices[:, 0], vertices_indices[:, 1], vertices_indices[:, 2]]
-
         # move back to original device
         vertices = torch.from_numpy(vertices.copy()).to(device)
         faces = torch.from_numpy(faces.copy()).to(device)
@@ -208,110 +208,7 @@ class TSDFfromSSAN:
         # save the current mesh
         ms.save_current_mesh(filename)
 
-    def integrate_tsdf(
-        self,
-        c2w: TensorType["batch", 4, 4],
-        K: TensorType["batch", 3, 3],
-        depth_images: TensorType["batch", 1, "height", "width"],
-        color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
-        mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
-    ):
-        """Integrates a batch of depth images into the TSDF.
-
-        Args:
-            c2w: The camera extrinsics.
-            K: The camera intrinsics.
-            depth_images: The depth images to integrate.
-            color_images: The color images to integrate.
-            mask_images: The mask images to integrate.
-        """
-        if mask_images is not None:
-            raise NotImplementedError("Mask images are not supported yet.")
-
-        batch_size = c2w.shape[0]
-        shape = self.voxel_coords.shape[1:]
-
-        # Project voxel_coords into image space...
-
-        image_size = torch.tensor(
-            [depth_images.shape[-1], depth_images.shape[-2]], device=self.device
-        )  # [width, height]
-
-        # make voxel_coords homogeneous
-        voxel_world_coords = self.voxel_coords.view(3, -1)
-        voxel_world_coords = torch.cat(
-            [voxel_world_coords, torch.ones(1, voxel_world_coords.shape[1], device=self.device)], dim=0
-        )
-        voxel_world_coords = voxel_world_coords.unsqueeze(0)  # [1, 4, N]
-        voxel_world_coords = voxel_world_coords.expand(batch_size, *voxel_world_coords.shape[1:])  # [batch, 4, N]
-
-        voxel_cam_coords = torch.bmm(torch.inverse(c2w), voxel_world_coords)  # [batch, 4, N]
-
-        # flip the z axis
-        voxel_cam_coords[:, 2, :] = -voxel_cam_coords[:, 2, :]
-        # flip the y axis
-        voxel_cam_coords[:, 1, :] = -voxel_cam_coords[:, 1, :]
-
-        # we need the distance of the point to the camera, not the z coordinate
-        voxel_depth = torch.sqrt(torch.sum(voxel_cam_coords[:, :3, :] ** 2, dim=-2, keepdim=True))  # [batch, 1, N]
-
-        voxel_cam_coords_z = voxel_cam_coords[:, 2:3, :]
-        voxel_cam_points = torch.bmm(K, voxel_cam_coords[:, 0:3, :] / voxel_cam_coords_z)  # [batch, 3, N]
-        voxel_pixel_coords = voxel_cam_points[:, :2, :]  # [batch, 2, N]
-
-        # Sample the depth images with grid sample...
-
-        grid = voxel_pixel_coords.permute(0, 2, 1)  # [batch, N, 2]
-        # normalize grid to [-1, 1]
-        grid = 2.0 * grid / image_size.view(1, 1, 2) - 1.0  # [batch, N, 2]
-        grid = grid[:, None]  # [batch, 1, N, 2]
-        # depth
-        sampled_depth = F.grid_sample(
-            input=depth_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        )  # [batch, N, 1]
-        sampled_depth = sampled_depth.squeeze(2)  # [batch, 1, N]
-        # colors
-        if color_images is not None:
-            sampled_colors = F.grid_sample(
-                input=color_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-            )  # [batch, N, 3]
-            sampled_colors = sampled_colors.squeeze(2)  # [batch, 3, N]
-
-
-        dist = sampled_depth - voxel_depth  # [batch, 1, N]
-        tsdf_values = torch.clamp(dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
-
-        valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (dist > -self.truncation)  # [batch, 1, N]
-
-        # Sequentially update the TSDF...
-
-        for i in range(batch_size):
-            valid_points_i = valid_points[i]
-            valid_points_i_shape = valid_points_i.view(*shape)  # [xdim, ydim, zdim]
-
-            # the old values
-            old_tsdf_values_i = self.values[valid_points_i_shape]
-            old_weights_i = self.weights[valid_points_i_shape]
-
-            # the new values
-            # TODO: let the new weight be configurable
-            new_tsdf_values_i = tsdf_values[i][valid_points_i]
-            new_weights_i = 1.0
-
-            total_weights = old_weights_i + new_weights_i
-
-            self.values[valid_points_i_shape] = (
-                old_tsdf_values_i * old_weights_i + new_tsdf_values_i * new_weights_i
-            ) / total_weights
-            self.weights[valid_points_i_shape] = torch.clamp(total_weights, max=1.0)
-
-            if color_images is not None:
-                old_colors_i = self.colors[valid_points_i_shape]  # [M, 3]
-                new_colors_i = sampled_colors[i][:, valid_points_i.squeeze(0)].permute(1, 0)  # [M, 3]
-                self.colors[valid_points_i_shape] = (
-                    old_colors_i * old_weights_i[:, None] + new_colors_i * new_weights_i
-                ) / total_weights[:, None]
-
+   
 
     def integrate_tri_tsdf(
         self,
@@ -349,101 +246,6 @@ class TSDFfromSSAN:
             [depth_images.shape[-1], depth_images.shape[-2]], device=self.device
         )  # [width, height]
 
-        # # make voxel_coords homogeneous
-        # voxel_world_coords = self.voxel_coords.view(3, -1)
-        # voxel_world_coords = torch.cat(
-        #     [voxel_world_coords, torch.ones(1, voxel_world_coords.shape[1], device=self.device)], dim=0
-        # )
-        # voxel_world_coords = voxel_world_coords.unsqueeze(0)  # [1, 4, N]
-        # voxel_world_coords = voxel_world_coords.expand(batch_size, *voxel_world_coords.shape[1:])  # [batch, 4, N]
-
-        # voxel_cam_coords = torch.bmm(torch.inverse(c2w), voxel_world_coords)  # [batch, 4, N]
-
-        # # flip the z axis
-        # voxel_cam_coords[:, 2, :] = -voxel_cam_coords[:, 2, :]
-        # # flip the y axis
-        # voxel_cam_coords[:, 1, :] = -voxel_cam_coords[:, 1, :]
-
-        # # we need the distance of the point to the camera, not the z coordinate
-        # voxel_depth = torch.sqrt(torch.sum(voxel_cam_coords[:, :3, :] ** 2, dim=-2, keepdim=True))  # [batch, 1, N]
-
-        # voxel_cam_coords_z = voxel_cam_coords[:, 2:3, :]
-        # voxel_cam_points = torch.bmm(K, voxel_cam_coords[:, 0:3, :] / voxel_cam_coords_z)  # [batch, 3, N]
-        # voxel_pixel_coords = voxel_cam_points[:, :2, :]  # [batch, 2, N]
-        # del(voxel_cam_coords_z,voxel_cam_points,voxel_cam_coords,voxel_world_coords)
-
-        # Sample the depth images with grid sample...
-
-        # grid = voxel_pixel_coords.permute(0, 2, 1)  # [batch, N, 2]
-        # # normalize grid to [-1, 1]
-        # grid = 2.0 * grid / image_size.view(1, 1, 2) - 1.0  # [batch, N, 2]
-        # grid = grid[:, None]  # [batch, 1, N, 2]
-        # # depth surface
-        # sampled_depth = F.grid_sample(
-        #     input=depth_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        # )  # [batch, N, 1]
-        # sampled_depth = sampled_depth.squeeze(2)  # [batch, 1, N]
-        # print(F"sampled depth size: {sampled_depth.shape}")
-        # # depth Outside
-        # sampled_depth_16 = F.grid_sample(
-        #     input=depth_images_outside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        # )  # [batch, N, 1]
-        # sampled_depth_16 = sampled_depth_16.squeeze(2)  # [batch, 1, N]
-
-        # # depth Inside 
-        # sampled_depth_84 = F.grid_sample(
-        #     input=depth_images_inside, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        # )  # [batch, N, 1]
-        # sampled_depth_84 = sampled_depth_84.squeeze(2)  # [batch, 1, N]
-
-
-        # del(depth_images,depth_images_outside,depth_images_inside)
-
-        # sampled_origins = F.grid_sample(
-        #     input=ray_origins, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        # )  # [batch, N, 1]
-        # sampled_origins = sampled_origins.squeeze(2)  # [batch, 1, N]
-
-        # ## normals
-        # surface_normals_grid = F.grid_sample(input=surface_normals, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-        #     ) # [batch, N, 3])
-        # surface_normals_grid = surface_normals_grid.squeeze(2)
-
-        # normal_samples_grid = F.grid_sample(
-        #     input=normal_samples, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-        #     ) # [batch, N, 3]
-        # normal_samples_grid = normal_samples_grid.squeeze(2)
-
-        # normal_regularity_grid = F.grid_sample(
-        #     input=normal_regularity, grid=grid,mode="nearest",padding_mode="zeros",align_corners=False
-        #     ) # [batch, N, 3]
-        # normal_regularity_grid = normal_regularity_grid.squeeze(2)
-
-        # colors
-        # if color_images is not None:
-        #     sampled_colors = F.grid_sample(
-        #         input=color_images, grid=grid, mode="nearest", padding_mode="zeros", align_corners=False
-        #     )  # [batch, N, 3]
-        #     sampled_colors = sampled_colors.squeeze(2)  # [batch, 3, N]
-
-        # surface_dist = sampled_depth - voxel_depth  # [batch, 1, N]
-        # outside_dist = sampled_depth_16 - voxel_depth
-        # inside_dist = sampled_depth_84 - voxel_depth
-
-        # hyperparameter = 1
-        # print(surface_dist)
-        # tsdf_values_surface = torch.clamp(surface_dist / self.truncation, min=-1.0, max=1.0)  # [batch, 1, N]
-        # tsdf_values_outside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) - hyperparameter  # [batch, 1, N]
-        # tsdf_values_inside = torch.clamp(torch.Tensor((surface_dist / self.truncation)), min=-1.0, max=1.0) + hyperparameter  # [batch, 1, N]
-
-        # print(f"tsdf_values_outside: {tsdf_values_outside}")
-        # print(f"tsdf_values_inside: {tsdf_values_inside}")
-        
-
-        # tsdf_values = tsdf_values_surface##(tsdf_values_outside + tsdf_values_surface + tsdf_values_inside)/3
-
-        #valid_points = (voxel_depth > 0) & (sampled_depth > 0) & (surface_dist > -self.truncation)  # [batch, 1, N]
-
         self.surface_mlp.train(True)
 
         loss = torch.nn.L1Loss()
@@ -455,6 +257,8 @@ class TSDFfromSSAN:
 
         with torch.enable_grad():
             for n in range(1):
+                surf_loss_sum = 0
+                norm_reg_loss_avg = 0 
                 sum_losses = 0
                 # Sequentially update the TSDF...
                 for i in range(batch_size):
@@ -467,8 +271,9 @@ class TSDFfromSSAN:
                     inside_points = depth_images_inside[i]
                     inside_points = inside_points.reshape(3,-1).t()
                     
+                    ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
-                    batches = 10
+                    batches = 7
 
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
@@ -485,41 +290,69 @@ class TSDFfromSSAN:
                                 continue
 
                             surface_loss_value = self.surface_loss(outputs)
+                            normal_smoothness_value = self.normal_smoothness_loss(outputs)
+
+                            loss = (100*surface_loss_value) + (0.001*normal_smoothness_value)
                             #print(f"outputs = {outputs}")
-                            sum_losses+=surface_loss_value
+                            sum_losses+=loss
+                            surf_loss_sum += surface_loss_value
+                            norm_reg_loss_avg += normal_smoothness_value
+
+
                             self.optimiser.zero_grad()
                             surface_loss_value.backward()
                             
-                            profiler.step()
                             next_idx += 1
             
                             #input()
                             
                 print(f"avgloss image ---> {sum_losses/outputs[:,0].shape[0]}")
+                print(f"avgloss surf ---> {surf_loss_sum/outputs[:,0].shape[0]}")
+                print(f"avgloss normSmoo-> {norm_reg_loss_avg/outputs[:,0].shape[0]}")
+                profiler.add_scalar("Loss/SumLoss", sum_losses/outputs[:,0].shape[0])
+                profiler.add_scalar("Loss/SurfaceLoss", surf_loss_sum/outputs[:,0].shape[0])
+                profiler.add_scalar("Loss/NormalRegularisation", norm_reg_loss_avg/outputs[:,0].shape[0])
+
             self.optimiser.step()
 
-    def normal_smoothness_loss(self,output_prediction: torch.Tensor):
+
+    ##uses finite difference to approximate a series of normals between the 16th and 84th percentile depths.
+    def normal_smoothness_loss(self,output_prediction: torch.Tensor,normal_reg_constant: int = 10):
+        linear_spaces = torch.linspace(0,1,10).cuda()
         output_divider = int(output_prediction.shape[0]/3)
                                 
         normal_outside = output_prediction[output_divider:output_divider*2,1:]
+        normal_outside = F.normalize(normal_outside,dim=1)
+        ##print(normal_outside)
         normal_inside = output_prediction[output_divider*2:,1:]
+        normal_inside = F.normalize(normal_inside,dim=1)
+
 
         norm_difference = (normal_inside - normal_outside)
-        # print(f"Pos_difference: {pos_difference[:,0,0,0]}")
+        ##print(f"norm_difference: {norm_difference} \n{norm_difference.shape}")
 
 
-        norm_difference = norm_difference[None,:,:,:,:]
-        norm_difference = norm_difference.expand(10,-1,-1,-1,-1).cuda()
+        norm_difference = norm_difference[None,:,:]
+        norm_difference = norm_difference.expand(10,-1,-1).cuda()
 
-        outside_expanded = normal_outside[None,:,:,:,:]
+        outside_expanded = normal_outside[None,:,:]
 
         ##This can be removed. Normals sampled from tsdf.
-        outside_expanded = outside_expanded.expand(1,-1,-1,-1,-1)
+        outside_expanded = outside_expanded.expand(1,-1,-1)
         linear_spaces_exp = torch.empty_like(norm_difference)
         counter =0
         for s in linear_spaces:
-            linear_spaces_exp[counter,:,:,:,:] = s
+            linear_spaces_exp[counter,:,:] = s
             counter = counter+1
+        linear_spaces_exp = (linear_spaces_exp*norm_difference)
+        normal_samples = outside_expanded + linear_spaces_exp
+
+        normal_samples = normal_samples.sum(dim=0)
+        normal_samples = normal_samples.squeeze()
+        normal_regularity = torch.linalg.norm(normal_samples,dim=1)
+        normal_regularity = normal_regularity-normal_reg_constant
+        normal_regularity = normal_regularity.sum(dtype=torch.float32)
+        return normal_regularity
 
 
     def surface_loss(self,output_prediction: torch.Tensor): 
@@ -542,7 +375,9 @@ class TSDFfromSSAN:
             print("help")
 
         ##print(f"Individual surface Loss: {surface_loss_value}")
-        surface_loss_value = surface_loss_value.sum()
+
+        ##more space needed to hold total loss value
+        surface_loss_value = surface_loss_value.sum(dtype=torch.float32)
 
         return surface_loss_value
 def export_ssan(
@@ -750,35 +585,24 @@ def export_ssan(
 
 
     ##profiler 
-    with torch.profiler.profile(
-        schedule=torch.profiler.schedule(
-            wait=0,
-            warmup=1,
-            active=1,
-            repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(f'./log/Surface_training_{int(time.time())}'),
-        record_shapes=True,
-        profile_memory=True,
-    #     ##with_stack=True
-    ) as profiler:  
-
+    profiler = SummaryWriter()
    
-        for e in range(10):
-            print(f"### EPOCH {e}####\n################")
-            for i in range(0, len(c2w), batch_size):
-                tsdf_surface.integrate_tri_tsdf(
-                    c2w[i : i + batch_size],
-                    K[i : i + batch_size],
-                    depth_images_50[i : i + batch_size],
-                    depth_images_16[i : i + batch_size],
-                    depth_images_84[i : i + batch_size],
-                    ray_origins[i : i + batch_size],
-                    surface_normals[i:i+batch_size],
-                    normal_samples[i:i+batch_size],
-                    normal_regularity[i:i+batch_size],
-                    profiler,
-                    ##color_images=color_images[i : i + batch_size],
-                )
+    for e in range(10):
+        print(f"### EPOCH {e}####\n################")
+        for i in range(0, len(c2w), batch_size):
+            tsdf_surface.integrate_tri_tsdf(
+                c2w[i : i + batch_size],
+                K[i : i + batch_size],
+                depth_images_50[i : i + batch_size],
+                depth_images_16[i : i + batch_size],
+                depth_images_84[i : i + batch_size],
+                ray_origins[i : i + batch_size],
+                surface_normals[i:i+batch_size],
+                normal_samples[i:i+batch_size],
+                normal_regularity[i:i+batch_size],
+                profiler,
+                ##color_images=color_images[i : i + batch_size],
+            )
 
     surfaceHyperparameter = 0.1
 
