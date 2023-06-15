@@ -34,6 +34,7 @@ from nerfstudio.exporter.exporter_utils import (
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
+from nerfstudio.utils.math import safe_normalize
 
 CONSOLE = Console(width=120)
 
@@ -126,6 +127,9 @@ class TSDFfromSSAN:
         weights = torch.zeros(volume_dims.tolist())
         colors = torch.zeros(volume_dims.tolist() + [3])
 
+        # TODO: set this properly based on the aabb From instant_ngp field
+        per_level_scale = 1.4472692012786865
+
         ##growth_factor = np.exp((np.log(2048)-np.log(16)/(15-1)))
         ###
         ##taken from nerfacto field parameters##
@@ -138,7 +142,7 @@ class TSDFfromSSAN:
                 "n_features_per_level": 2,
                 "log2_hashmap_size": 19,
                 "base_resolution": 16,
-                "per_level_scale": 1.382,
+                "per_level_scale": per_level_scale,
 
             },
             network_config={
@@ -255,6 +259,8 @@ class TSDFfromSSAN:
         ##torch.set_printoptions(profile="full")
         device = depth_images.device
 
+        print(f"shape comparison = outputs {depth_images.shape}. normalTruth {normal_samples.shape}")
+
         with torch.enable_grad():
             for n in range(1):
                 surf_loss_sum = 0
@@ -271,13 +277,13 @@ class TSDFfromSSAN:
                     outside_points = outside_points.reshape(3,-1).t()
                     inside_points = depth_images_inside[i]
                     inside_points = inside_points.reshape(3,-1).t()
-                    surface_normals = surface_normals[i]
-                    surface_normals = surface_normals.reshape(3,-1).t()
+                    normal_gt = surface_normals[i]
+                    normal_gt = normal_gt.reshape(3,-1).t()
                     
                     ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
                     batches = 5
-
+                    
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
                     for x in spaced_array:
@@ -289,7 +295,7 @@ class TSDFfromSSAN:
                             ##output dims: (surface [:,0], normal [:,1-3])
                             outputs = self.surface_mlp(inputs).to(device)
 
-                            normal_truth = surface_normals[x:spaced_array[next_idx]]
+                            normal_truth = normal_gt[x:spaced_array[next_idx]]
 
                             if torch.isnan(outputs).any():
                                 continue
@@ -323,6 +329,7 @@ class TSDFfromSSAN:
                 profiler.add_scalar("Loss/SumLoss", sum_losses/outputs[:,0].shape[0])
                 profiler.add_scalar("Loss/SurfaceLoss", surf_loss_sum/outputs[:,0].shape[0])
                 profiler.add_scalar("Loss/NormalRegularisation", norm_reg_loss_avg/outputs[:,0].shape[0])
+                profiler.add_scalar("Loss/NormalSmoothnessLoss", norm_smooth_loss/outputs[:,0].shape[0])
 
             self.optimiser.step()
 
@@ -330,8 +337,16 @@ class TSDFfromSSAN:
         output_divider = int(output_prediction.shape[0]/3)
         samples = output_prediction[0:output_divider,1:]
 
+        samples = safe_normalize(samples)
+        expected_outputs = safe_normalize(expected_outputs)
+
+        ##If normal is [0,0,0] replace the nan from normalising with a 0. This will give max loss against the, 
+        # ideally, not zero norm from the NeRF.
+        if torch.isnan(expected_outputs).any():
+            print("expected outputs returned a NAN Value")
+            expected_outputs = torch.nan_to_num(expected_outputs)
+
         regularity = samples-expected_outputs
-        regularity = F.normalize(regularity,dim=1)
         regularity = regularity**2
         loss = regularity.sum()
         return loss
@@ -343,19 +358,25 @@ class TSDFfromSSAN:
         output_divider = int(output_prediction.shape[0]/3)
                                 
         normal_outside = output_prediction[output_divider:output_divider*2,1:]
+        ##debug##
         out_orig = output_prediction[output_divider:output_divider*2,1:]
+        in_orig = output_prediction[output_divider*2:,1:]
+
+        ##If normal is [0,0,0] replace the nan from normalising with a 0. This gives max loss if the opposing
+        # value is not 0.
+        normal_outside = safe_normalize(normal_outside)
         if torch.isnan(normal_outside).any():
             print("NOOOOO")
-        normal_outside = F.normalize(normal_outside,dim=1)
-        ##print(normal_outside)
+            normal_outside = torch.nan_to_num(normal_outside)
+
         normal_inside = output_prediction[output_divider*2:,1:]
+
+        normal_inside = safe_normalize(normal_inside)
         if torch.isnan(normal_inside).any():
             print("NOOOOO")
-        normal_inside = F.normalize(normal_inside,dim=1)
-        if torch.isnan(normal_inside).any():
-            print("NOOOOO")
-        if torch.isnan(normal_outside).any():
-            print("NOOOOO")
+            normal_inside = torch.nan_to_num(normal_inside)
+
+
 
         norm_difference = (normal_inside - normal_outside)
         ##print(f"norm_difference: {norm_difference} \n{norm_difference.shape}")
@@ -381,7 +402,7 @@ class TSDFfromSSAN:
         normal_samples = normal_samples.sum(dim=0)
         normal_samples = normal_samples.squeeze()
 
-        normal_regularity = torch.linalg.norm(normal_samples,dim=1)
+        normal_regularity = torch.linalg.norm(normal_samples)
         normal_regularity = normal_regularity-normal_reg_constant
         normal_regularity = normal_regularity.sum(dtype=torch.float32)
         return normal_regularity**2
