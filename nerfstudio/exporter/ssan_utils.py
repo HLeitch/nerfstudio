@@ -60,7 +60,7 @@ class TSDFfromSSAN:
     
     ###
     ##taken from nerfacto field parameters##
-    surface_mlp: tcnn.NetworkWithInputEncoding
+    surface_mlp: torch.nn.Sequential
     optimiser: torch.optim.Optimizer
     
 
@@ -133,10 +133,29 @@ class TSDFfromSSAN:
         ##growth_factor = np.exp((np.log(2048)-np.log(16)/(15-1)))
         ###
         ##taken from nerfacto field parameters##
-        surface_mlp = tcnn.NetworkWithInputEncoding(
-            n_input_dims=3,
-            n_output_dims=4,
-            encoding_config={
+        # surface_mlp = tcnn.NetworkWithInputEncoding(
+        #     n_input_dims=3,
+        #     n_output_dims=4,
+        #     encoding_config={
+        #         "otype": "HashGrid",
+        #         "n_levels": 15,
+        #         "n_features_per_level": 2,
+        #         "log2_hashmap_size": 19,
+        #         "base_resolution": 16,
+        #         "per_level_scale": per_level_scale,
+
+        #     },
+        #     network_config={
+        #         "otype": "FullyFusedMLP",
+        #         "activation": "ReLU",
+        #         "output_activation": "None",
+        #         "n_neurons": 64,
+        #         "n_hidden_layers": 2 - 1,
+        #         "seed": 210799
+        #     },
+        # )
+
+        encoding = tcnn.Encoding(3,encoding_config={
                 "otype": "HashGrid",
                 "n_levels": 15,
                 "n_features_per_level": 2,
@@ -144,16 +163,18 @@ class TSDFfromSSAN:
                 "base_resolution": 16,
                 "per_level_scale": per_level_scale,
 
-            },
-            network_config={
-                "otype": "FullyFusedMLP",
+            })
+        
+        network = tcnn.Network(encoding.n_output_dims, n_output_dims=4,
+            network_config={"otype": "FullyFusedMLP",
                 "activation": "ReLU",
                 "output_activation": "None",
                 "n_neurons": 64,
                 "n_hidden_layers": 2 - 1,
                 "seed": 210799
-            },
-        )
+            })
+        surface_mlp = torch.nn.Sequential(encoding,network)
+
         optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.005, betas=(0.9,0.99),eps=10e-15)
 
         # TODO: move to device
@@ -291,30 +312,37 @@ class TSDFfromSSAN:
                             inputs = torch.cat((surface_points[x:spaced_array[next_idx]],
                                                 outside_points[x:spaced_array[next_idx]],
                                                 inside_points[x:spaced_array[next_idx]]))
-                            
+                            if torch.isnan(inputs).any():
+                                print("ml inputs contain nan")
+
                             ##output dims: (surface [:,0], normal [:,1-3])
+                            
                             outputs = self.surface_mlp(inputs).to(device)
 
                             normal_truth = normal_gt[x:spaced_array[next_idx]]
 
                             if torch.isnan(outputs).any():
-                                continue
+                                print("mloutputs contain nan")
 
                             surface_loss_value = self.surface_loss(outputs)
                             normal_consistency_value = self.normal_consistency_loss(outputs)
                             smoothness_loss = self.normal_smoothness_loss(outputs,normal_truth)
 
                             loss = (100*surface_loss_value) + (0.0001*normal_consistency_value) +(1*smoothness_loss)
+
+                            
+
+                            
                             #print(f"outputs = {outputs}")
                             sum_losses+=loss
                             surf_loss_sum += surface_loss_value
                             norm_reg_loss_avg += normal_consistency_value
                             norm_smooth_loss +=smoothness_loss
 
-
-
+                            self.surface_mlp
 
                             self.optimiser.zero_grad()
+                            
                             surface_loss_value.backward()
                             
                             next_idx += 1
