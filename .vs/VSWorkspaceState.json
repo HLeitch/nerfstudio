@@ -3,7 +3,9 @@
     "",
     "\\nerfstudio",
     "\\nerfstudio\\configs",
+    "\\nerfstudio\\exporter",
     "\\scripts"
   ],
+  "SelectedNode": "\\nerfstudio\\exporter\\ssan_utils.py",
   "PreviewInSolutionExplorer": false
 }
