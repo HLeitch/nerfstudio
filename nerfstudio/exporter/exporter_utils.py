@@ -462,7 +462,7 @@ def render_trajectory_tri_tsdf(
             surface_normals.append(outputs["normals"].cpu().numpy())
 
             ray_origins.append(camera_ray_bundle.origins.cpu().numpy())
-            ray_directions.append(camera_ray_bundle.origins.cpu().numpy())
+            ray_directions.append(camera_ray_bundle.directions.cpu().numpy())
             ray_cam_ind.append(camera_ray_bundle.camera_indices.cpu().numpy())
 
 
