@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import GPUtil
+import mcubes
 import numpy as np
 import pymeshlab
 import tinycudann as tcnn
-import torch
 import torch.nn.functional as F
 from rich.console import Console
 from skimage import measure
@@ -179,11 +179,32 @@ class TSDFfromSSAN:
 
         surface_mlp = surface_mlp.float()
 
-        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.005, betas=(0.9,0.99),eps=1e-15,weight_decay=1e-6)
+        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.001, betas=(0.9,0.99),eps=1e-15,weight_decay=1e-6)
 
         # TODO: move to device
 
         return TSDFfromSSAN(voxel_coords, values, weights,normal_values,normal_weights, surface_mlp,optimiser, colors, voxel_size, origin)
+    
+    
+    def get_mesh(self) -> Mesh:
+        """Extracts a mesh using marching cubes."""
+    ##device = self.values.device
+
+    X,Y,Z = np.linspace(-1,1,200)
+    pointArray = 
+    for x in X:
+        for y in Y:
+            for z in Z:
+
+
+    print(X.shape)
+    self.surface_mlp
+    # run marching cubes on CPU
+    tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
+    print(f"tsdf value np: {tsdf_values_np}")
+    vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np, level=0, allow_degenerate=False)
+
+
 
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
@@ -307,7 +328,7 @@ class TSDFfromSSAN:
                     
                     ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
-                    batches = 10
+                    batches = 3
                     
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
@@ -328,9 +349,17 @@ class TSDFfromSSAN:
                             if torch.isnan(mlp_prediction).any():
                                 print("mloutputs contain nan")
 
-                            surface_loss_value = 0.01*self.surface_loss(mlp_prediction)
-                            normal_consistency_value = 0.000001*self.normal_consistency_loss(mlp_prediction)
-                            smoothness_loss = 0.001*self.normal_smoothness_loss(mlp_prediction,normal_truth)
+                            surface_loss_value = self.surface_loss(mlp_prediction)
+                            normal_consistency_value = self.normal_consistency_loss(mlp_prediction)
+                            smoothness_loss = self.normal_smoothness_loss(mlp_prediction,normal_truth)
+                            
+                            profiler.add_scalar("Loss/SurfaceLoss", surface_loss_value/(mlp_prediction[:,0].shape[0]/3))
+                            profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction[:,0].shape[0]/3))
+                            profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction[:,0].shape[0]/3))
+
+                            surface_loss_value *= 0.01
+                            normal_consistency_value *= 0.000001
+                            smoothness_loss *= 0.001
 
                             tot_loss = (surface_loss_value) + (normal_consistency_value) +(smoothness_loss)
                             
@@ -342,13 +371,10 @@ class TSDFfromSSAN:
                             norm_reg_loss_avg += normal_consistency_value
                             norm_smooth_loss +=smoothness_loss
 
-                            if(next_idx==1): print(F"Losses: {tot_loss}, {surface_loss_value}, {normal_consistency_value}, {smoothness_loss}")
+                            ##if(next_idx==1): print(F"Losses: {tot_loss}, {surface_loss_value}, {normal_consistency_value}, {smoothness_loss}")
 
-                            profiler.add_scalar("Loss/SumLoss", sum_losses/mlp_prediction[:,0].shape[0])
-                            profiler.add_scalar("Loss/SurfaceLoss", surf_loss_sum/mlp_prediction[:,0].shape[0])
-                            profiler.add_scalar("Loss/NormalRegularisation", norm_reg_loss_avg/mlp_prediction[:,0].shape[0])
-                            profiler.add_scalar("Loss/NormalSmoothnessLoss", norm_smooth_loss/mlp_prediction[:,0].shape[0])
-
+                            profiler.add_scalar("Loss/SumLoss", tot_loss/(mlp_prediction[:,0].shape[0]/3))
+                            
                             self.optimiser.zero_grad()
                             
                             tot_loss.backward()
@@ -386,7 +412,7 @@ class TSDFfromSSAN:
         return loss
 
 
-    ##uses finite difference to approximate a series of normals between the 16th and 84th percentile depths.
+    ###uses finite difference to approximate a series of normals between the 16th and 84th percentile depths.
     def normal_consistency_loss(self,output_prediction: torch.Tensor,normal_reg_constant: int = 10):
         linear_spaces = torch.linspace(0,1,normal_reg_constant).cuda()
         output_divider = int(output_prediction.shape[0]/3)
@@ -693,22 +719,22 @@ def export_ssan(
     ##profiler 
     profiler = SummaryWriter()
    
-    for e in range(50):
-        print(f"### EPOCH {e}####\n################")
-        for i in range(0, len(c2w), batch_size):
-            tsdf_surface.integrate_tri_tsdf(
-                c2w[i : i + batch_size],
-                K[i : i + batch_size],
-                depth_images_50[i : i + batch_size],
-                depth_images_16[i : i + batch_size],
-                depth_images_84[i : i + batch_size],
-                ray_origins[i : i + batch_size],
-                surface_normals[i:i+batch_size],
-                normal_samples[i:i+batch_size],
-                normal_regularity[i:i+batch_size],
-                profiler,
-                ##color_images=color_images[i : i + batch_size],
-            )
+    # for e in range(50):
+    #     print(f"### EPOCH {e}####\n################")
+    #     for i in range(0, len(c2w), batch_size):
+    #         tsdf_surface.integrate_tri_tsdf(
+    #             c2w[i : i + batch_size],
+    #             K[i : i + batch_size],
+    #             depth_images_50[i : i + batch_size],
+    #             depth_images_16[i : i + batch_size],
+    #             depth_images_84[i : i + batch_size],
+    #             ray_origins[i : i + batch_size],
+    #             surface_normals[i:i+batch_size],
+    #             normal_samples[i:i+batch_size],
+    #             normal_regularity[i:i+batch_size],
+    #             profiler,
+    #             ##color_images=color_images[i : i + batch_size],
+    #         )
 
     surfaceHyperparameter = 0.1
 
