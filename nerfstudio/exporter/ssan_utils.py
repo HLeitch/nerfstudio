@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import GPUtil
-import mcubes
 import numpy as np
 import pymeshlab
 import tinycudann as tcnn
@@ -191,13 +190,14 @@ class TSDFfromSSAN:
     ##device = self.values.device
 
     X,Y,Z = np.linspace(-1,1,200)
-    pointArray = 
+    pointArray = np.vstack(np.meshgrid(X,Y,Z)).reshape(3,-1).T
+    
     for x in X:
         for y in Y:
             for z in Z:
 
 
-    print(X.shape)
+                print(X.shape)
     self.surface_mlp
     # run marching cubes on CPU
     tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
