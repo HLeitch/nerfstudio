@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import open3d as o3d
 import open3d.visualization as o3dvis
-import skimage.measure
+import skimage as sk
 import torch
 import tyro
 from rich.console import Console

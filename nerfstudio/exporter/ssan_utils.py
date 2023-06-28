@@ -13,10 +13,14 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import GPUtil
+import matplotlib.pyplot as plt
+import mcubes as mcubes
 import numpy as np
 import pymeshlab
 import tinycudann as tcnn
+import torch as torch
 import torch.nn.functional as F
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from rich.console import Console
 from skimage import measure
 from torch.utils.data import DataLoader, SubsetRandomSampler, dataset
@@ -184,49 +188,84 @@ class TSDFfromSSAN:
 
         return TSDFfromSSAN(voxel_coords, values, weights,normal_values,normal_weights, surface_mlp,optimiser, colors, voxel_size, origin)
     
-    
+    @torch.no_grad()
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
-    ##device = self.values.device
+        ##device = self.values.device
+        sample_density = 100
+        ##X,Y,Z = np.linspace(-1,1,200)
+        X = np.linspace(-2,2,sample_density)
+        Y = np.linspace(-2,2,sample_density)
+        Z = np.linspace(-2,2,sample_density)
 
-    X,Y,Z = np.linspace(-1,1,200)
-    pointArray = np.vstack(np.meshgrid(X,Y,Z)).reshape(3,-1).T
-    
-    for x in X:
-        for y in Y:
-            for z in Z:
+        xx, yy, zz = np.meshgrid(X,Y,Z)
+        print(xx[0,0,:],yy[0,0,:],zz[0,0,:])
 
-
-                print(X.shape)
-    self.surface_mlp
-    # run marching cubes on CPU
-    tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
-    print(f"tsdf value np: {tsdf_values_np}")
-    vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np, level=0, allow_degenerate=False)
-
-
-
-    def get_mesh(self) -> Mesh:
-        """Extracts a mesh using marching cubes."""
-
-        device = self.values.device
-
+        grid = torch.zeros((sample_density,sample_density,sample_density,3))
+        grid[:,:,:,0] = torch.Tensor(xx)
+        grid[:,:,:,1] = torch.Tensor(yy)
+        grid[:,:,:,2] = torch.Tensor(zz)
+        grid = grid.reshape(-1,3)
+        
+        results = self.surface_mlp(grid.to(self.device))
+        surface_value = results[:,0]
+        surface_value = surface_value.reshape(sample_density,sample_density,sample_density)
+        surface_value = torch.squeeze(surface_value)
         # run marching cubes on CPU
-        tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
-        print(f"tsdf value np: {tsdf_values_np}")
-        vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np, level=0, allow_degenerate=False)
+        tsdf_values_np = surface_value.cpu()
+        tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        vertices_indices = np.round(vertices).astype(int)
-        colors = self.colors[vertices_indices[:, 0], vertices_indices[:, 1], vertices_indices[:, 2]]
-        # move back to original device
-        vertices = torch.from_numpy(vertices.copy()).to(device)
-        faces = torch.from_numpy(faces.copy()).to(device)
-        normals = torch.from_numpy(normals.copy()).to(device)
+        ##tsdf_values_np = 1- np.abs(tsdf_values_np)
+        print(f"tsdf value np: {tsdf_values_np.shape}")
 
-        # move vertices back to world space
-        vertices = self.origin.view(1, 3) + vertices * self.voxel_size.view(1, 3)
+        vertices, triangles = mcubes.marching_cubes(tsdf_values_np,0)
 
-        return Mesh(vertices=vertices, faces=faces, normals=normals, colors=colors)
+        # f = lambda x,y,z: self.surface_mlp(torch.Tensor((x,y,z)))[0]
+
+        # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
+        
+        mcubes.export_obj(vertices,triangles,"TEST_SPHERE.obj")
+
+        # vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np,level=0.6, allow_degenerate=False)
+        
+        # fig = plt.figure(figsize=(10,10))
+        # ax = fig.add_subplot(111, projection='3d')
+        # mesh = Poly3DCollection(vertices[faces])
+        # mesh.set_edgecolor('g')
+        # ax.add_collection3d(mesh)
+
+        # ax.set_xlim(0, 24)  # a = 6 (times two for 2nd ellipsoid)
+        # ax.set_ylim(0, 20)  # b = 10
+        # ax.set_zlim(0, 32)  # c = 16
+
+        # plt.tight_layout()
+        # plt.show()
+        # input()
+
+        return vertices,faces,normals
+
+
+    # def get_mesh(self) -> Mesh:
+    #     """Extracts a mesh using marching cubes."""
+
+    #     device = self.values.device
+
+    #     # run marching cubes on CPU
+    #     tsdf_values_np = self.values.clamp(-1, 1).cpu().numpy()
+    #     print(f"tsdf value np: {tsdf_values_np}")
+    #     vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np, level=0, allow_degenerate=False)
+
+    #     vertices_indices = np.round(vertices).astype(int)
+    #     colors = self.colors[vertices_indices[:, 0], vertices_indices[:, 1], vertices_indices[:, 2]]
+    #     # move back to original device
+    #     vertices = torch.from_numpy(vertices.copy()).to(device)
+    #     faces = torch.from_numpy(faces.copy()).to(device)
+    #     normals = torch.from_numpy(normals.copy()).to(device)
+
+    #     # move vertices back to world space
+    #     vertices = self.origin.view(1, 3) + vertices * self.voxel_size.view(1, 3)
+
+    #     return Mesh(vertices=vertices, faces=faces, normals=normals, colors=colors)
 
     @classmethod
     def export_mesh(cls, mesh: Mesh, filename: str):
@@ -328,7 +367,7 @@ class TSDFfromSSAN:
                     
                     ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
-                    batches = 3
+                    batches = 15
                     
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
@@ -344,6 +383,7 @@ class TSDFfromSSAN:
                             
                             mlp_prediction = self.surface_mlp(inputs).to(device)
 
+
                             normal_truth = normal_gt[x:spaced_array[next_idx]]
 
                             if torch.isnan(mlp_prediction).any():
@@ -357,7 +397,7 @@ class TSDFfromSSAN:
                             profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction[:,0].shape[0]/3))
                             profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction[:,0].shape[0]/3))
 
-                            surface_loss_value *= 0.01
+                            surface_loss_value *= 0.007
                             normal_consistency_value *= 0.000001
                             smoothness_loss *= 0.001
 
@@ -478,9 +518,9 @@ class TSDFfromSSAN:
         ##surface loss Li in NerfMeshing                            
         ##As we know the desired outputs for each of the depth measurements, we can easily calculate euclidian 
         ## distances to each
-        surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)*1)*0.1)**2) + 
+        surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)*1))**2) + 
                             surface_mid**2 + 
-                            ((surface_inside+(torch.ones_like(surface_outside)*1)*0.1)**2))
+                            ((surface_inside+(torch.ones_like(surface_outside)*1))**2))
         if torch.isnan(surface_loss_value).any():
             print("help")
 
@@ -524,7 +564,12 @@ def export_ssan(
     start_state = pipeline.state_dict()
 
     device = pipeline.device
-    
+    # X, Y, Z = np.mgrid[:30, :30, :30]
+    # u = (X-15)**2 + (Y-15)**2 + (Z-15)**2 - 8**2
+    # print(u.shape)
+    # vertices, triangles = mcubes.marching_cubes(u, 0)
+    # mcubes.export_obj(vertices, triangles, 'sphere.obj')
+
 
     dataparser_outputs = pipeline.datamanager.train_dataset._dataparser_outputs  # pylint: disable=protected-access
 
@@ -597,14 +642,14 @@ def export_ssan(
     ## Currently shuffles based on image number, thus the model is trained on an image
     ##by image basis.
     shuffled = DataLoader(dataset,batch_size=270,shuffle=True)
-    for newOrder in shuffled:
-        depth_images_50= newOrder[0]
-        depth_images_16= newOrder[1]
-        depth_images_84 = newOrder[2]
-        surface_normals = newOrder[3]
-        ray_origins = newOrder[4]
-        ray_directions= newOrder[5]
-        ray_cam_inds = newOrder[6]
+    # for newOrder in shuffled:
+    #     depth_images_50= newOrder[0]
+    #     depth_images_16= newOrder[1]
+    #     depth_images_84 = newOrder[2]
+    #     surface_normals = newOrder[3]
+    #     ray_origins = newOrder[4]
+    #     ray_directions= newOrder[5]
+    #     ray_cam_inds = newOrder[6]
     
 
 
@@ -719,22 +764,22 @@ def export_ssan(
     ##profiler 
     profiler = SummaryWriter()
    
-    # for e in range(50):
-    #     print(f"### EPOCH {e}####\n################")
-    #     for i in range(0, len(c2w), batch_size):
-    #         tsdf_surface.integrate_tri_tsdf(
-    #             c2w[i : i + batch_size],
-    #             K[i : i + batch_size],
-    #             depth_images_50[i : i + batch_size],
-    #             depth_images_16[i : i + batch_size],
-    #             depth_images_84[i : i + batch_size],
-    #             ray_origins[i : i + batch_size],
-    #             surface_normals[i:i+batch_size],
-    #             normal_samples[i:i+batch_size],
-    #             normal_regularity[i:i+batch_size],
-    #             profiler,
-    #             ##color_images=color_images[i : i + batch_size],
-    #         )
+    for e in range(3):
+        print(f"### EPOCH {e}####\n################")
+        for i in range(0, len(c2w), batch_size):
+            tsdf_surface.integrate_tri_tsdf(
+                c2w[i : i + batch_size],
+                K[i : i + batch_size],
+                depth_images_50[i : i + batch_size],
+                depth_images_16[i : i + batch_size],
+                depth_images_84[i : i + batch_size],
+                ray_origins[i : i + batch_size],
+                surface_normals[i:i+batch_size],
+                normal_samples[i:i+batch_size],
+                normal_regularity[i:i+batch_size],
+                profiler,
+                ##color_images=color_images[i : i + batch_size],
+            )
 
     surfaceHyperparameter = 0.1
 
