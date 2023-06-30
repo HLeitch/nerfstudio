@@ -354,7 +354,7 @@ class DepthRenderer84Percentile(nn.Module):
     """Calculate depth along ray when density reaches 0.84.
 
     Depth Method:
-        - median: Depth is set to the distance where the accumulated weight reaches 0.16.
+        - median: Depth is set to the distance where the accumulated weight reaches 0.84.
         - expected: Expected depth along ray. Same procedure as rendering rgb, but with depth.
 
     Args:

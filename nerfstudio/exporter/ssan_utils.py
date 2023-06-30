@@ -134,9 +134,9 @@ class TSDFfromSSAN:
         # TODO: set this properly based on the aabb From instant_ngp field
         per_level_scale = 1.4472692012786865
 
-        #growth_factor = np.exp((np.log(2048)-np.log(16)/(15-1)))
-        ##
-        #taken from nerfacto field parameters##
+        growth_factor = np.exp((np.log(2048)-np.log(16)/(15-1)))
+        
+        ##taken from nerfacto field parameters##
         # surface_mlp = tcnn.NetworkWithInputEncoding(
         #     n_input_dims=3,
         #     n_output_dims=4,
@@ -154,11 +154,11 @@ class TSDFfromSSAN:
         #         "activation": "ReLU",
         #         "output_activation": "None",
         #         "n_neurons": 64,
-        #         "n_hidden_layers": 2 - 1,
+        #         "n_hidden_layers": 2,
         #         "seed": 210799
         #     },
         # )
-
+        # print(surface_mlp)
         encoding = tcnn.Encoding(3,encoding_config={
                 "otype": "HashGrid",
                 "n_levels": 15,
@@ -175,14 +175,14 @@ class TSDFfromSSAN:
                 "output_activation": "None",
                 "n_neurons": 64,
                 "n_hidden_layers": 2,
-                "seed": 210799
+                
             })
         
         surface_mlp = torch.nn.Sequential(encoding,network)
-
+        print(surface_mlp)
         surface_mlp = surface_mlp.float()
 
-        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.001, betas=(0.9,0.99),eps=1e-15,weight_decay=1e-6)
+        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.001, betas=(0.9,0.99),eps=10e-15,weight_decay=1e-6)
 
         # TODO: move to device
 
@@ -205,17 +205,29 @@ class TSDFfromSSAN:
         grid[:,:,:,0] = torch.Tensor(xx)
         grid[:,:,:,1] = torch.Tensor(yy)
         grid[:,:,:,2] = torch.Tensor(zz)
-        grid = grid.reshape(-1,3)
+
+        results = torch.ones((sample_density,sample_density,sample_density))
+        ##grid = grid.reshape(-1,3)
+
+        _x = 0
+        _y=0
+        _z = 0
+        while _x < sample_density:
+            while _y <sample_density:
+                results[_x,_y,:] = self.surface_mlp(grid[_x,_y,:,:])[:,0]
+                _y+=1
+            _x+=1
+            _y=0
         
-        results = self.surface_mlp(grid.to(self.device))
-        surface_value = results[:,0]
-        surface_value = surface_value.reshape(sample_density,sample_density,sample_density)
-        surface_value = torch.squeeze(surface_value)
-        # run marching cubes on CPU
-        tsdf_values_np = surface_value.cpu()
+        # results = self.surface_mlp(grid.to(self.device))
+        # surface_value = results[:,0]
+        # ##surface_value = surface_value.reshape(sample_density,sample_density,sample_density)
+        # surface_value = torch.squeeze(surface_value)
+        # # run marching cubes on CPU
+        tsdf_values_np = results.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        ##tsdf_values_np = 1- np.abs(tsdf_values_np)
+        tsdf_values_np = 1- np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
 
         vertices, triangles = mcubes.marching_cubes(tsdf_values_np,0)
@@ -303,9 +315,9 @@ class TSDFfromSSAN:
         self,
         c2w: TensorType["batch", 4, 4],
         K: TensorType["batch", 3, 3],
-        depth_images: TensorType["batch", 1, "height", "width"],
-        depth_images_outside: TensorType["batch", 1, "height", "width"],
-        depth_images_inside: TensorType["batch", 1, "height", "width"],
+        depth_images: TensorType["batch", 3, "height", "width"],
+        depth_images_outside: TensorType["batch", 3, "height", "width"],
+        depth_images_inside: TensorType["batch", 3, "height", "width"],
         ray_origins: TensorType["batch", 3, "height", "width"],
         surface_normals: TensorType["batch", 3, "height", "width"],
         normal_samples: TensorType["batch", 3, "height", "width"],
@@ -356,19 +368,22 @@ class TSDFfromSSAN:
                 for i in range(batch_size):
                     
                     surface_points = depth_images[i]
-                    surface_points = surface_points.reshape(3,-1).t()
+                    surface_points = surface_points.flatten(1,2).t()
+                    print(f"Depth images: {depth_images[i]}")
+                    print(f"surface images: {surface_points[i]}")
+                    
 
                     outside_points = depth_images_outside[i]
-                    outside_points = outside_points.reshape(3,-1).t()
+                    outside_points = outside_points.flatten(1,2).t()
                     inside_points = depth_images_inside[i]
-                    inside_points = inside_points.reshape(3,-1).t()
+                    inside_points = inside_points.flatten(1,2).t()
                     normal_gt = surface_normals[i]
-                    normal_gt = normal_gt.reshape(3,-1).t()
+                    normal_gt = normal_gt.flatten(1,2).t()
                     
                     ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
-                    batches = 15
-                    
+                    batches = 10
+                    counter = 0
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
                     for x in spaced_array:
@@ -380,7 +395,7 @@ class TSDFfromSSAN:
                                 print("ml inputs contain nan")
 
                             ##output dims: (surface [:,0], normal [:,1-3])
-                            
+
                             mlp_prediction = self.surface_mlp(inputs).to(device)
 
 
@@ -397,14 +412,14 @@ class TSDFfromSSAN:
                             profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction[:,0].shape[0]/3))
                             profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction[:,0].shape[0]/3))
 
-                            surface_loss_value *= 0.007
-                            normal_consistency_value *= 0.000001
-                            smoothness_loss *= 0.001
+                            surface_loss_value *= 1
+                            normal_consistency_value *= 0.000000001
+                            smoothness_loss *= 0.0000001
 
                             tot_loss = (surface_loss_value) + (normal_consistency_value) +(smoothness_loss)
                             
-                            tot_loss *=1
-
+                            tot_loss *=0.1
+                            counter+=1
                             #print(f"outputs = {outputs}")
                             sum_losses+=tot_loss
                             surf_loss_sum += surface_loss_value
@@ -540,7 +555,7 @@ def export_ssan(
     depth_output_name: str = "depth",
     rgb_output_name: str = "rgb",
     resolution: Union[int, List[int]] = field(default_factory=lambda: [256, 256, 256]),
-    batch_size: int = 10,
+    batch_size: int = 1,
     use_bounding_box: bool = True,
     bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
     bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -627,7 +642,7 @@ def export_ssan(
     ## Nc in eq 12 of nerfmeshing.
     linear_spaces = torch.linspace(0,1,1).cuda()
     depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device) 
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
     depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
     print("depth_images shape: {depth_images_50.shape}")
     surface_normals = torch.tensor(np.array(surface_normals), device=device)
@@ -641,7 +656,7 @@ def export_ssan(
 
     ## Currently shuffles based on image number, thus the model is trained on an image
     ##by image basis.
-    shuffled = DataLoader(dataset,batch_size=270,shuffle=True)
+    # shuffled = DataLoader(dataset,batch_size=270,shuffle=True)
     # for newOrder in shuffled:
     #     depth_images_50= newOrder[0]
     #     depth_images_16= newOrder[1]
@@ -650,11 +665,6 @@ def export_ssan(
     #     ray_origins = newOrder[4]
     #     ray_directions= newOrder[5]
     #     ray_cam_inds = newOrder[6]
-    
-
-
-
-    print(f"ray: {ray_origins.shape}\ndepth: {depth_images_16.shape}")
 
     depth_images_50 = ray_origins+(ray_directions*depth_images_50)
     depth_images_16 = ray_origins+(ray_directions*depth_images_16)
@@ -662,13 +672,7 @@ def export_ssan(
     outside_positions = ray_origins+(ray_directions*depth_images_16)
     inside_positions = ray_origins+(ray_directions*depth_images_84)
 
-
-    # print(f"outside: {outside_positions[:,0,0,0]}")
-    # print(f"inside: {inside_positions[:,0,0,0]}")
-
     pos_difference = (inside_positions - outside_positions)
-    # print(f"Pos_difference: {pos_difference[:,0,0,0]}")
-
 
     pos_difference = pos_difference[None,:,:,:,:]
     pos_difference = pos_difference.expand(10,-1,-1,-1,-1).cuda()
@@ -752,9 +756,6 @@ def export_ssan(
     surface_normals = torch.tensor(surface_normals, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
     normal_samples = torch.tensor(normal_samples, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
     normal_regularity = torch.tensor(normal_regularity, device=device).permute(0,3,1,2)   # shape (N, 1, H, W)
-
-    print(depth_images_50.shape)
-    
     ray_origins = torch.tensor(ray_origins, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     # ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
@@ -764,19 +765,19 @@ def export_ssan(
     ##profiler 
     profiler = SummaryWriter()
    
-    for e in range(3):
+    for e in range(40):
         print(f"### EPOCH {e}####\n################")
         for i in range(0, len(c2w), batch_size):
             tsdf_surface.integrate_tri_tsdf(
                 c2w[i : i + batch_size],
                 K[i : i + batch_size],
-                depth_images_50[i : i + batch_size],
-                depth_images_16[i : i + batch_size],
-                depth_images_84[i : i + batch_size],
-                ray_origins[i : i + batch_size],
-                surface_normals[i:i+batch_size],
-                normal_samples[i:i+batch_size],
-                normal_regularity[i:i+batch_size],
+                depth_images_50[i : i + batch_size].squeeze(),
+                depth_images_16[i : i + batch_size].squeeze(),
+                depth_images_84[i : i + batch_size].squeeze(),
+                ray_origins[i : i + batch_size].squeeze(),
+                surface_normals[i:i+batch_size].squeeze(),
+                normal_samples[i:i+batch_size].squeeze(),
+                normal_regularity[i:i+batch_size].squeeze(),
                 profiler,
                 ##color_images=color_images[i : i + batch_size],
             )
