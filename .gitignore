@@ -200,3 +200,7 @@ test-sphere/
 log/
 
 sphere.obj
+
+TEST_SPHERE.obj
+
+*.npy

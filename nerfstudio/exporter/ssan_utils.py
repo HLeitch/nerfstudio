@@ -136,7 +136,7 @@ class TSDFfromSSAN:
 
         growth_factor = np.exp((np.log(2048)-np.log(16)/(15-1)))
         
-        ##taken from nerfacto field parameters##
+        #taken from nerfacto field parameters##
         # surface_mlp = tcnn.NetworkWithInputEncoding(
         #     n_input_dims=3,
         #     n_output_dims=4,
@@ -174,10 +174,9 @@ class TSDFfromSSAN:
                 "activation": "ReLU",
                 "output_activation": "None",
                 "n_neurons": 64,
-                "n_hidden_layers": 2,
+                "n_hidden_layers": 1,
                 
             })
-        
         surface_mlp = torch.nn.Sequential(encoding,network)
         print(surface_mlp)
         surface_mlp = surface_mlp.float()
@@ -192,7 +191,7 @@ class TSDFfromSSAN:
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
         ##device = self.values.device
-        sample_density = 100
+        sample_density = 300
         ##X,Y,Z = np.linspace(-1,1,200)
         X = np.linspace(-2,2,sample_density)
         Y = np.linspace(-2,2,sample_density)
@@ -206,7 +205,7 @@ class TSDFfromSSAN:
         grid[:,:,:,1] = torch.Tensor(yy)
         grid[:,:,:,2] = torch.Tensor(zz)
 
-        results = torch.ones((sample_density,sample_density,sample_density))
+        results = -torch.ones((sample_density,sample_density,sample_density))
         ##grid = grid.reshape(-1,3)
 
         _x = 0
@@ -227,7 +226,7 @@ class TSDFfromSSAN:
         tsdf_values_np = results.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        tsdf_values_np = 1- np.abs(tsdf_values_np)
+        #tsdf_values_np = 1- np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
 
         vertices, triangles = mcubes.marching_cubes(tsdf_values_np,0)
@@ -366,12 +365,8 @@ class TSDFfromSSAN:
                 norm_smooth_loss = 0
                 # Sequentially update the TSDF...
                 for i in range(batch_size):
-                    
                     surface_points = depth_images[i]
                     surface_points = surface_points.flatten(1,2).t()
-                    print(f"Depth images: {depth_images[i]}")
-                    print(f"surface images: {surface_points[i]}")
-                    
 
                     outside_points = depth_images_outside[i]
                     outside_points = outside_points.flatten(1,2).t()
@@ -379,10 +374,13 @@ class TSDFfromSSAN:
                     inside_points = inside_points.flatten(1,2).t()
                     normal_gt = surface_normals[i]
                     normal_gt = normal_gt.flatten(1,2).t()
-                    
+
+                    # print(f"Depth images: {depth_images[i]}")
+                    # print(f"surface images: {surface_points[i]}")
+                
                     ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
-                    batches = 10
+                    batches = 20
                     counter = 0
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
@@ -411,20 +409,23 @@ class TSDFfromSSAN:
                             profiler.add_scalar("Loss/SurfaceLoss", surface_loss_value/(mlp_prediction[:,0].shape[0]/3))
                             profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction[:,0].shape[0]/3))
                             profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction[:,0].shape[0]/3))
+                           
+                            surf_loss_sum += surface_loss_value
+                            norm_reg_loss_avg += normal_consistency_value
+                            norm_smooth_loss +=smoothness_loss
 
-                            surface_loss_value *= 1
+
+                            surface_loss_value *= 0.01
                             normal_consistency_value *= 0.000000001
                             smoothness_loss *= 0.0000001
 
                             tot_loss = (surface_loss_value) + (normal_consistency_value) +(smoothness_loss)
                             
-                            tot_loss *=0.1
+                            tot_loss *=1
                             counter+=1
                             #print(f"outputs = {outputs}")
                             sum_losses+=tot_loss
-                            surf_loss_sum += surface_loss_value
-                            norm_reg_loss_avg += normal_consistency_value
-                            norm_smooth_loss +=smoothness_loss
+
 
                             ##if(next_idx==1): print(F"Losses: {tot_loss}, {surface_loss_value}, {normal_consistency_value}, {smoothness_loss}")
 
@@ -443,6 +444,7 @@ class TSDFfromSSAN:
                 print(f"avgloss surf ---> {surf_loss_sum/mlp_prediction[:,0].shape[0]}")
                 print(f"avgloss normreg-> {norm_reg_loss_avg/mlp_prediction[:,0].shape[0]}")
                 print(f"avgloss normSmoo-> {norm_smooth_loss/mlp_prediction[:,0].shape[0]}")
+                print(f"ray samples per batch = {(surface_points.shape[0]*3)/(batches-1)}")
 
 
 
@@ -555,7 +557,7 @@ def export_ssan(
     depth_output_name: str = "depth",
     rgb_output_name: str = "rgb",
     resolution: Union[int, List[int]] = field(default_factory=lambda: [256, 256, 256]),
-    batch_size: int = 1,
+    batch_size: int = 10,
     use_bounding_box: bool = True,
     bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
     bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -626,31 +628,47 @@ def export_ssan(
     cameras = dataparser_outputs.cameras.to(device)
     #print(f"Cameras 1: {cameras.camera_to_worlds} ")
     # we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
-        pipeline,
-        cameras,
-        rgb_output_name=rgb_output_name,
-        surface_depth_output_name=depth_output_name,
-        outside_depth_output_name= "depth_16",
-        inside_depth_output_name= "depth_84",
-        rendered_resolution_scaling_factor=1.0 / downscale_factor,
-        disable_distortion=True,
-    )
-    ## Normal Sampling##
+    # color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
+    #     pipeline,
+    #     cameras,
+    #     rgb_output_name=rgb_output_name,
+    #     surface_depth_output_name=depth_output_name,
+    #     outside_depth_output_name= "depth_16",
+    #     inside_depth_output_name= "depth_84",
+    #     rendered_resolution_scaling_factor=1.0 / downscale_factor,
+    #     disable_distortion=True,
+    # )
+    # ## Normal Sampling##
 
-    ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
-    ## Nc in eq 12 of nerfmeshing.
-    linear_spaces = torch.linspace(0,1,1).cuda()
-    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
-    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
-    print("depth_images shape: {depth_images_50.shape}")
-    surface_normals = torch.tensor(np.array(surface_normals), device=device)
-    ray_origins = torch.tensor(np.array(ray_origins), device=device)
-    ray_directions = torch.tensor(np.array(ray_directions), device=device)
-    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+    # ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
+    # ## Nc in eq 12 of nerfmeshing.
+    # linear_spaces = torch.linspace(0,1,1).cuda()
+    # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
+    # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
+    # depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
+    # print("depth_images shape: {depth_images_50.shape}")
+    # surface_normals = torch.tensor(np.array(surface_normals), device=device)
+    # ray_origins = torch.tensor(np.array(ray_origins), device=device)
+    # ray_directions = torch.tensor(np.array(ray_directions), device=device)
+    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
 
-    dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
+    # dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
+    # #with open("/test_arrays/depth_images_50","wb") as f:
+    # np.save("depth_images_50.npy",arr=np.array(depth_images_50.cpu()))
+    # np.save("depth_images_16.npy",arr=np.array(depth_images_16.cpu()))
+    # np.save("depth_images_84.npy",arr=np.array(depth_images_84.cpu()))
+    # np.save("surface_normals.npy",arr=np.array(surface_normals.cpu()))
+    # np.save("ray_origins.npy",arr=np.array(ray_origins.cpu()))
+    # np.save("ray_directions.npy",arr=np.array(ray_directions.cpu()))
+    # np.save("ray_cam_inds.npy",arr=np.array(ray_cam_inds.cpu()))
+
+    depth_images_50 = np.load("depth_images_50.npy")
+    depth_images_16 = np.load("depth_images_16.npy")
+    depth_images_84 = np.load("depth_images_84.npy")
+    surface_normals = np.load("surface_normals.npy")
+    ray_origins = np.load("ray_origins")
+    ray_directions = np.load("ray_directions")
+    ray_cam_inds = np.load("ray_cam_inds")
 
     print(f"{depth_images_50.shape}")
 
@@ -765,19 +783,19 @@ def export_ssan(
     ##profiler 
     profiler = SummaryWriter()
    
-    for e in range(40):
+    for e in range(3):
         print(f"### EPOCH {e}####\n################")
         for i in range(0, len(c2w), batch_size):
             tsdf_surface.integrate_tri_tsdf(
                 c2w[i : i + batch_size],
                 K[i : i + batch_size],
-                depth_images_50[i : i + batch_size].squeeze(),
-                depth_images_16[i : i + batch_size].squeeze(),
-                depth_images_84[i : i + batch_size].squeeze(),
-                ray_origins[i : i + batch_size].squeeze(),
-                surface_normals[i:i+batch_size].squeeze(),
-                normal_samples[i:i+batch_size].squeeze(),
-                normal_regularity[i:i+batch_size].squeeze(),
+                depth_images_50[i : i + batch_size],
+                depth_images_16[i : i + batch_size],
+                depth_images_84[i : i + batch_size],
+                ray_origins[i : i + batch_size],
+                surface_normals[i:i+batch_size],
+                normal_samples[i:i+batch_size],
+                normal_regularity[i:i+batch_size],
                 profiler,
                 ##color_images=color_images[i : i + batch_size],
             )
