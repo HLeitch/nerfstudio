@@ -17,9 +17,11 @@ import matplotlib.pyplot as plt
 import mcubes as mcubes
 import numpy as np
 import pymeshlab
+import skimage.io as skio
 import tinycudann as tcnn
 import torch as torch
 import torch.nn.functional as F
+from mpl_toolkits import mplot3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from rich.console import Console
 from skimage import measure
@@ -661,6 +663,13 @@ def export_ssan(
     color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
 
     print(f"{depth_images_50.shape}")
+    ##Image representations of above data##
+    # x = 0
+    # while x < 12:
+    #     img = np.array(ray_directions[x].abs().squeeze().cpu())
+    #     skio.imshow(arr= img)
+    #     x+=1
+    # input()
 
     ## Currently shuffles based on image number, thus the model is trained on an image
     ##by image basis.
@@ -679,6 +688,13 @@ def export_ssan(
     depth_images_84 = ray_origins+(ray_directions*depth_images_84)
     outside_positions = ray_origins+(ray_directions*depth_images_16)
     inside_positions = ray_origins+(ray_directions*depth_images_84)
+
+    fig = plt.figure(figsize=(10,10))
+    ax = plt.axes(projection ="3d")
+    img = np.array(depth_images_50[5].cpu())
+    
+    ax.scatter3D(img[:,:,0],img[:,:,1],img[:,:,2])
+    plt.show()
 
     pos_difference = (inside_positions - outside_positions)
 
