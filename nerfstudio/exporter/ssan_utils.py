@@ -124,6 +124,8 @@ class TSDFfromSSAN:
         grid = torch.stack(torch.meshgrid([xdim, ydim, zdim], indexing="ij"), dim=0)
         voxel_coords = origin.view(3, 1, 1, 1) + grid * voxel_size.view(3, 1, 1, 1)
 
+        print(voxel_coords.shape)
+
         # initialize the values and weights
         values = -torch.ones(volume_dims.tolist())
         normal_values = torch.zeros(volume_dims.tolist()+[3])
@@ -191,29 +193,29 @@ class TSDFfromSSAN:
     def get_mesh(self) -> Mesh:
         """Extracts a mesh using marching cubes."""
         ##device = self.values.device
-        sample_density = 300
-        ##X,Y,Z = np.linspace(-1,1,200)
-        X = np.linspace(-2,2,sample_density)
-        Y = np.linspace(-2,2,sample_density)
-        Z = np.linspace(-2,2,sample_density)
+        # sample_density = 300
+        # ##X,Y,Z = np.linspace(-1,1,200)
+        # X = np.linspace(-2,2,self.voxel_coords.shape[1])
+        # Y = np.linspace(-2,2,self.voxel_coords.shape[2])
+        # Z = np.linspace(-2,2,self.voxel_coords.shape[3])
 
-        xx, yy, zz = np.meshgrid(X,Y,Z)
-        print(xx[0,0,:],yy[0,0,:],zz[0,0,:])
+        # xx, yy, zz = np.meshgrid(X,Y,Z)
+        # print(xx[0,0,:],yy[0,0,:],zz[0,0,:])
 
-        grid = torch.zeros((sample_density,sample_density,sample_density,3))
-        grid[:,:,:,0] = torch.Tensor(xx)
-        grid[:,:,:,1] = torch.Tensor(yy)
-        grid[:,:,:,2] = torch.Tensor(zz)
+        # grid = torch.zeros((sample_density,sample_density,sample_density,3))
+        # grid[:,:,:,0] = torch.Tensor(xx)
+        # grid[:,:,:,1] = torch.Tensor(yy)
+        # grid[:,:,:,2] = torch.Tensor(zz)
 
-        results = -torch.ones((sample_density,sample_density,sample_density))
+        results = -torch.ones((self.voxel_coords.shape[1],self.voxel_coords.shape[2],self.voxel_coords.shape[3]))
         ##grid = grid.reshape(-1,3)
 
         _x = 0
         _y=0
         _z = 0
-        while _x < sample_density:
-            while _y <sample_density:
-                results[_x,_y,:] = self.surface_mlp(grid[_x,_y,:,:])[:,0]
+        while _x < self.voxel_coords.shape[1]:
+            while _y <self.voxel_coords.shape[2]:
+                results[_x,_y,:] = self.surface_mlp(self.voxel_coords[:,_x,_y,:].t())[:,0]
                 _y+=1
             _x+=1
             _y=0
@@ -237,23 +239,7 @@ class TSDFfromSSAN:
         
         mcubes.export_obj(vertices,triangles,"TEST_SPHERE.obj")
 
-        # vertices, faces, normals, _ = measure.marching_cubes(tsdf_values_np,level=0.6, allow_degenerate=False)
-        
-        # fig = plt.figure(figsize=(10,10))
-        # ax = fig.add_subplot(111, projection='3d')
-        # mesh = Poly3DCollection(vertices[faces])
-        # mesh.set_edgecolor('g')
-        # ax.add_collection3d(mesh)
-
-        # ax.set_xlim(0, 24)  # a = 6 (times two for 2nd ellipsoid)
-        # ax.set_ylim(0, 20)  # b = 10
-        # ax.set_zlim(0, 32)  # c = 16
-
-        # plt.tight_layout()
-        # plt.show()
-        # input()
-
-        return vertices,faces,normals
+        ##return vertices,faces,normals
 
 
     # def get_mesh(self) -> Mesh:
@@ -380,7 +366,7 @@ class TSDFfromSSAN:
                 
                     ##number of groups the image is split into.
                     ##Indexing means this value cannot be lower than 2
-                    batches = 20
+                    batches = 25
                     counter = 0
                     spaced_array = np.linspace(0,surface_points.shape[0],batches,dtype=int)
                     next_idx = 1
@@ -642,7 +628,7 @@ def export_ssan(
 
     # ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
     # ## Nc in eq 12 of nerfmeshing.
-    # linear_spaces = torch.linspace(0,1,1).cuda()
+    linear_spaces = torch.linspace(0,1,1).cuda()
     # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
     # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
     # depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
@@ -651,6 +637,7 @@ def export_ssan(
     # ray_origins = torch.tensor(np.array(ray_origins), device=device)
     # ray_directions = torch.tensor(np.array(ray_directions), device=device)
     # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+    # color_images = torch.tensor(np.array(color_images), device=device)
 
     # dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
     # #with open("/test_arrays/depth_images_50","wb") as f:
@@ -661,14 +648,17 @@ def export_ssan(
     # np.save("ray_origins.npy",arr=np.array(ray_origins.cpu()))
     # np.save("ray_directions.npy",arr=np.array(ray_directions.cpu()))
     # np.save("ray_cam_inds.npy",arr=np.array(ray_cam_inds.cpu()))
+    # np.save("color_images.npy",arr=np.array(color_images.cpu()))
 
-    depth_images_50 = np.load("depth_images_50.npy")
-    depth_images_16 = np.load("depth_images_16.npy")
-    depth_images_84 = np.load("depth_images_84.npy")
-    surface_normals = np.load("surface_normals.npy")
-    ray_origins = np.load("ray_origins")
-    ray_directions = np.load("ray_directions")
-    ray_cam_inds = np.load("ray_cam_inds")
+
+    depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
+    depth_images_16 =torch.Tensor(np.load("depth_images_16.npy")).to(device)
+    depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
+    surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
+    ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
+    ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
+    ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
+    color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
 
     print(f"{depth_images_50.shape}")
 
@@ -775,15 +765,15 @@ def export_ssan(
     normal_samples = torch.tensor(normal_samples, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
     normal_regularity = torch.tensor(normal_regularity, device=device).permute(0,3,1,2)   # shape (N, 1, H, W)
     ray_origins = torch.tensor(ray_origins, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # ray_directions = torch.tensor(np.array(ray_directions), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    ray_directions = torch.tensor(np.array(ray_directions.cpu()), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+    #ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
     CONSOLE.print("Integrating the Surface TSDF")
 
 
     ##profiler 
     profiler = SummaryWriter()
    
-    for e in range(3):
+    for e in range(6):
         print(f"### EPOCH {e}####\n################")
         for i in range(0, len(c2w), batch_size):
             tsdf_surface.integrate_tri_tsdf(
