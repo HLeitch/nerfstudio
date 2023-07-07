@@ -42,6 +42,7 @@ from torchtyping import TensorType
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import Frustums, RayBundle, RaySamples
 from nerfstudio.data.datasets.base_dataset import InputDataset
+from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.rich_utils import ItersPerSecColumn
@@ -392,6 +393,10 @@ def render_trajectory_tri_tsdf(
     inside_depth_output_name: str,
     rendered_resolution_scaling_factor: float = 1.0,
     disable_distortion: bool = False,
+    use_aabb: bool = False,
+    bounding_box_min: Tuple[float, float, float] = (-1, -1, -1),
+    bounding_box_max: Tuple[float, float, float] = (1, 1, 1)
+
 ) -> Tuple[List[np.ndarray], List[np.ndarray],List[np.ndarray], List[np.ndarray], List[np.ndarray],List[np.ndarray],List[np.ndarray]]:
     """Helper function to create a video of a trajectory.
     Args:
@@ -425,9 +430,18 @@ def render_trajectory_tri_tsdf(
     )
     with progress:
         for camera_idx in progress.track(range(cameras.size), description=""):
-            camera_ray_bundle = cameras.generate_rays(
-                camera_indices=camera_idx, disable_distortion=disable_distortion
-            ).to(pipeline.device)
+            if use_aabb:
+                aabbbox = torch.zeros([2,3])
+                aabbbox[0] = torch.tensor(bounding_box_min)
+                aabbbox[1] = torch.tensor(bounding_box_max)
+                camera_ray_bundle = cameras.generate_rays(
+                    camera_indices=camera_idx, disable_distortion=disable_distortion,
+                    aabb_box=SceneBox(aabbbox)
+                ).to(pipeline.device)
+            else:
+                camera_ray_bundle = cameras.generate_rays(
+                    camera_indices=camera_idx, disable_distortion=disable_distortion
+                ).to(pipeline.device)
             with torch.no_grad():
                 outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
             if rgb_output_name not in outputs:

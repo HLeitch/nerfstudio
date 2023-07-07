@@ -185,7 +185,7 @@ class TSDFfromSSAN:
         print(surface_mlp)
         surface_mlp = surface_mlp.float()
 
-        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.001, betas=(0.9,0.99),eps=10e-15,weight_decay=1e-6)
+        optimiser = torch.optim.Adam(surface_mlp.parameters(), lr=0.0001, betas=(0.9,0.99),eps=10e-15,weight_decay=1e-6)
 
         # TODO: move to device
 
@@ -614,8 +614,8 @@ def export_ssan(
     pipeline.cuda()
     # camera per image supplied
     cameras = dataparser_outputs.cameras.to(device)
-    #print(f"Cameras 1: {cameras.camera_to_worlds} ")
-    # we turn off distortion when populating the TSDF
+    print(f"Cameras 1: {cameras.camera_to_worlds} ")
+    ##we turn off distortion when populating the TSDF
     # color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
     #     pipeline,
     #     cameras,
@@ -625,11 +625,14 @@ def export_ssan(
     #     inside_depth_output_name= "depth_84",
     #     rendered_resolution_scaling_factor=1.0 / downscale_factor,
     #     disable_distortion=True,
+    #     use_aabb=True,
+    #     bounding_box_min=bounding_box_min,
+    #     bounding_box_max=bounding_box_max
     # )
-    # ## Normal Sampling##
+    ## Normal Sampling##
 
-    # ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
-    # ## Nc in eq 12 of nerfmeshing.
+    ## 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
+    ## Nc in eq 12 of nerfmeshing.
     linear_spaces = torch.linspace(0,1,1).cuda()
     # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
     # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
@@ -642,7 +645,7 @@ def export_ssan(
     # color_images = torch.tensor(np.array(color_images), device=device)
 
     # dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
-    # #with open("/test_arrays/depth_images_50","wb") as f:
+    # ##with open("/test_arrays/depth_images_50","wb") as f:
     # np.save("depth_images_50.npy",arr=np.array(depth_images_50.cpu()))
     # np.save("depth_images_16.npy",arr=np.array(depth_images_16.cpu()))
     # np.save("depth_images_84.npy",arr=np.array(depth_images_84.cpu()))
@@ -654,7 +657,7 @@ def export_ssan(
 
 
     depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
-    depth_images_16 =torch.Tensor(np.load("depth_images_16.npy")).to(device)
+    depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
     depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
     surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
     ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
@@ -664,12 +667,13 @@ def export_ssan(
 
     print(f"{depth_images_50.shape}")
     ##Image representations of above data##
-    # x = 0
+    x = 6
     # while x < 12:
-    #     img = np.array(ray_directions[x].abs().squeeze().cpu())
+    #     testdata = surface_normals#-depth_images_16
+    #     img = np.array(testdata[x].abs().squeeze().cpu())
     #     skio.imshow(arr= img)
     #     x+=1
-    # input()
+    
 
     ## Currently shuffles based on image number, thus the model is trained on an image
     ##by image basis.
@@ -689,12 +693,47 @@ def export_ssan(
     outside_positions = ray_origins+(ray_directions*depth_images_16)
     inside_positions = ray_origins+(ray_directions*depth_images_84)
 
-    fig = plt.figure(figsize=(10,10))
-    ax = plt.axes(projection ="3d")
-    img = np.array(depth_images_50[5].cpu())
+    ## Normalise all data between 0 and 1 according to the bounding box
+    bounding_box_min = torch.tensor(bounding_box_min).to(device)
+    bounding_box_max = torch.tensor(bounding_box_max).to(device)
+
+    print(depth_images_50[:,:,:])
+    depth_images_50 -= bounding_box_min
+    depth_images_50 /= (bounding_box_max-bounding_box_min)
+    depth_images_50 = depth_images_50.cpu()
+
+    x = 0
+    testdata = depth_images_50#-depth_images_16
+    while x < 100:
+
+
+        img = np.array(testdata[x])
+
+        plt.imshow(img)
+        plt.title(f"image {x}")
+        plt.show(block=False)
+        plt.pause(1.5)
+        
+        plt.close()
+        x+=1
     
-    ax.scatter3D(img[:,:,0],img[:,:,1],img[:,:,2])
-    plt.show()
+
+    # fig = plt.figure(figsize=(10,10))
+    # ax = plt.axes(projection ="3d")
+    # for img in depth_images_50[0:50]:
+    #     img = img.cpu()
+    #     clippedImg = np.zeros(shape=[10,10,3])
+    #     x = 0
+    #     y = 0
+    #     while x<img.shape[0]:
+    #         while y<img.shape[1]:
+    #             if x%27==0 & y%48==0:
+    #                 clippedImg[(int(x/27)),(int(y/48))] = img[x,y]
+    #             y+=1
+    #         x+=1
+    #         y=0
+    #     ax.scatter3D(clippedImg[:,:,0],clippedImg[:,:,1],clippedImg[:,:,2])
+    # plt.show()
 
     pos_difference = (inside_positions - outside_positions)
 
