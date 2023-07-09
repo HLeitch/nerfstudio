@@ -644,7 +644,6 @@ def export_ssan(
     # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
     # color_images = torch.tensor(np.array(color_images), device=device)
 
-    # dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
     # ##with open("/test_arrays/depth_images_50","wb") as f:
     # np.save("depth_images_50.npy",arr=np.array(depth_images_50.cpu()))
     # np.save("depth_images_16.npy",arr=np.array(depth_images_16.cpu()))
@@ -664,6 +663,7 @@ def export_ssan(
     ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
     ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
     color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
+    dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
 
     print(f"{depth_images_50.shape}")
     ##Image representations of above data##
@@ -687,23 +687,19 @@ def export_ssan(
     #     ray_directions= newOrder[5]
     #     ray_cam_inds = newOrder[6]
 
-    depth_images_50 = ray_origins+(ray_directions*depth_images_50)
-    depth_images_16 = ray_origins+(ray_directions*depth_images_16)
-    depth_images_84 = ray_origins+(ray_directions*depth_images_84)
-    outside_positions = ray_origins+(ray_directions*depth_images_16)
-    inside_positions = ray_origins+(ray_directions*depth_images_84)
+    dataset.depth_to_point()
+    outside_positions = dataset.depth_16
+    inside_positions = dataset.depth_84
 
     ## Normalise all data between 0 and 1 according to the bounding box
     bounding_box_min = torch.tensor(bounding_box_min).to(device)
     bounding_box_max = torch.tensor(bounding_box_max).to(device)
 
-    print(depth_images_50[:,:,:])
-    depth_images_50 -= bounding_box_min
-    depth_images_50 /= (bounding_box_max-bounding_box_min)
-    depth_images_50 = depth_images_50.cpu()
+    dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
+    dataset.to_2d_array()
     x = 0
-    testdata = depth_images_50#-depth_images_16
+    testdata = dataset.depth_50.cpu()#-depth_images_16
     while x < 100:
 
 
@@ -880,6 +876,39 @@ class SSANDataset(dataset.Dataset):
 
         return _d50, _d16, _d84, _norms, _orig, _dir, _cam
     
+    ### must be used after converting depth vals to 3d points
+    def to_aabb_bounding_box(self,bounding_box_min,bounding_box_max):
+        if self.depth_50.shape[-1] != bounding_box_min.shape[0]:
+            raise ValueError("depth_50 not the right shape. Try using depth_to_point before.")
+
+        self.depth_50 -= bounding_box_min
+        self.depth_50 /= (bounding_box_max-bounding_box_min)
+
+        self.depth_16 -= bounding_box_min
+        self.depth_16 /= (bounding_box_max-bounding_box_min)
+
+        self.depth_84 -= bounding_box_min
+        self.depth_84 /= (bounding_box_max-bounding_box_min)
+
+
+    ### Converts the depth values to a 3d pos.
+    def depth_to_point(self):
+        self.depth_50 = self.ray_origins+(self.ray_directions*self.depth_50)
+        self.depth_16 = self.ray_origins+(self.ray_directions*self.depth_16)
+        self.depth_84 = self.ray_origins+(self.ray_directions*self.depth_84)
+    
+    ###Converts all parameters to a 2d array. Either [n,1] or [n,3] for every
+    def to_2d_array(self):
+        param_shape = self.depth_50.shape
+        _d50 = torch.reshape(self.depth_50,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_50.shape[3]])
+        _d16 = torch.reshape(self.depth_16,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_16.shape[3]])
+        _d84 = torch.reshape(self.depth_84,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_84.shape[3]])
+        _norms = torch.reshape(self.surface_normals,[param_shape[1]*param_shape[0]*param_shape[2],self.surface_normals.shape[3]])
+        _orig = torch.reshape(self.ray_origins,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_origins.shape[3]])
+        _dir = torch.reshape(self.ray_directions,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_directions.shape[3]])
+        _cam = torch.reshape(self.ray_cam_inds,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_cam_inds.shape[3]])
+
+
     def __len__(self):
         return len(self.depth_50)
 
