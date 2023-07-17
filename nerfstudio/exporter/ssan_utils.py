@@ -371,8 +371,6 @@ class TSDFfromSSAN:
 
                     ##output dims: (surface [:,0], normal [:,1-3])
 
-                    mlp_prediction = self.surface_mlp(inputs).to(device)
-
                     mlp_prediction_surface = self.surface_mlp(surface_points).to(device)
                     mlp_prediction_outside = self.surface_mlp(outside_points).to(device)
                     mlp_prediction_inside = self.surface_mlp(inside_points).to(device)
@@ -381,16 +379,16 @@ class TSDFfromSSAN:
 
                     normal_truth = normal_gt
 
-                    if torch.isnan(mlp_prediction).any():
+                    if torch.isnan(mlp_prediction_surface).any():
                         print("mloutputs contain nan")
 
                     surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
-                    normal_consistency_value = self.normal_consistency_loss(mlp_prediction)
-                    smoothness_loss = self.normal_smoothness_loss(mlp_prediction,normal_truth)
+                    normal_consistency_value = 0 #self.normal_consistency_loss(mlp_prediction_surface)
+                    smoothness_loss = 0 #self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
                     
-                    profiler.add_scalar("Loss/SurfaceLoss", surface_loss_value/(mlp_prediction[:,0].shape[0]/3))
-                    profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction[:,0].shape[0]/3))
-                    profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction[:,0].shape[0]/3))
+                    profiler.add_scalar("Loss/SurfaceLoss", surface_loss_value/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction_surface[:,0].shape[0]))
                     
                     r = torch.cuda.memory_reserved(0)
                     a = torch.cuda.memory_allocated(0)
@@ -416,7 +414,7 @@ class TSDFfromSSAN:
 
                     ##if(next_idx==1): print(F"Losses: {tot_loss}, {surface_loss_value}, {normal_consistency_value}, {smoothness_loss}")
 
-                    profiler.add_scalar("Loss/SumLoss", tot_loss/(mlp_prediction[:,0].shape[0]/3))
+                    profiler.add_scalar("Loss/SumLoss", tot_loss/(mlp_prediction_surface[:,0].shape[0]))
                     
                     self.optimiser.zero_grad()
                     
@@ -426,6 +424,8 @@ class TSDFfromSSAN:
                     del mlp_prediction_inside
                     del mlp_prediction_outside
                     del mlp_prediction_origins
+                    del inputs
+
                     #increment batch group
                     x+=1
                 
@@ -433,10 +433,10 @@ class TSDFfromSSAN:
     
                     #input()
                             
-                print(f"avgloss total ---> {sum_losses/mlp_prediction[:,0].shape[0]}")
-                print(f"avgloss surf ---> {surf_loss_sum/mlp_prediction[:,0].shape[0]}")
-                print(f"avgloss normreg-> {norm_reg_loss_avg/mlp_prediction[:,0].shape[0]}")
-                print(f"avgloss normSmoo-> {norm_smooth_loss/mlp_prediction[:,0].shape[0]}")
+                print(f"avgloss total ---> {sum_losses/depth_images[:,0].shape[0]}")
+                print(f"avgloss surf ---> {surf_loss_sum/depth_images[:,0].shape[0]}")
+                print(f"avgloss normreg-> {norm_reg_loss_avg/depth_images[:,0].shape[0]}")
+                print(f"avgloss normSmoo-> {norm_smooth_loss/depth_images[:,0].shape[0]}")
                 print(f"ray samples per batch = {surface_points.shape[0]}")
 
 
@@ -444,8 +444,8 @@ class TSDFfromSSAN:
             
 
     def normal_smoothness_loss(self,output_prediction: torch.Tensor, expected_outputs: Torch.tensor):
-        output_divider = int(output_prediction.shape[0]/3)
-        samples = output_prediction[0:output_divider,1:]
+        # output_divider = int(output_prediction.shape[0]/3)
+        # samples = output_prediction[0:output_divider,1:]
 
         samples = safe_normalize(samples)
         expected_outputs = safe_normalize(expected_outputs)
@@ -464,8 +464,8 @@ class TSDFfromSSAN:
 
     ###uses finite difference to approximate a series of normals between the 16th and 84th percentile depths.
     def normal_consistency_loss(self,output_prediction: torch.Tensor,normal_reg_constant: int = 10):
-        linear_spaces = torch.linspace(0,1,normal_reg_constant).cuda()
-        output_divider = int(output_prediction.shape[0]/3)
+        # linear_spaces = torch.linspace(0,1,normal_reg_constant).cuda()
+        # output_divider = int(output_prediction.shape[0]/3)
                                 
         normal_outside = output_prediction[output_divider:output_divider*2,1:]
         ##debug##
@@ -537,7 +537,7 @@ class TSDFfromSSAN:
                             ((surface_inside+(torch.ones_like(surface_outside)*0.1))**2))
         
         ##ray origins are always outside the surface value
-        ray_origin_loss = origins - (torch.ones_like(origins)*0.1)
+        ray_origin_loss = ((origins - (torch.ones_like(origins)*0.1))**2)
 
 
         if torch.isnan(surface_loss_value).any():
@@ -842,7 +842,7 @@ def export_ssan(
     ##batch_size number of images worth of rays randomly selected.
     ## batch_size * img_width * img_height 
     num_rays = batch_size * 270 * 480
-    divisions = 20
+    divisions = 75
    ##Batches changed from original tsdf integration to accomodate 2d input
     for e in range(12):
         print(f"### EPOCH {e}####\n################")

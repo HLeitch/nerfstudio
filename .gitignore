@@ -204,3 +204,11 @@ sphere.obj
 TEST_SPHERE.obj
 
 *.npy
+
+one minus Abs Mesh Outputs/
+
+0.1 abs surface loss/
+
+abs mesh output/
+
+signed mesh outputs/
