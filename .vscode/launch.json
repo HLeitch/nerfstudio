@@ -4,6 +4,7 @@
   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
+
     {
       "name": "Launch Chrome against localhost",
       "request": "launch",
@@ -103,7 +104,27 @@
 
       ]
 
-    }
+    },
+    
+    {
+      "name": "Python: export ignatius SSAN",
+      "type": "python",
+      "request": "launch",
+      "program": "scripts/exporter.py",
+      "console": "integratedTerminal",
+      "args": [
+        "Marching-tet",
+        //Change to any preprepared nerfacto model. 
+        "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-07-20_154555/config.yml",
+        "--output-dir=exports/tri-tsdf/",
+        "--use-bounding-box=True",
+        "--bounding-box-min", "-0.175", "-0.065", "-0.35",
+        "--bounding-box-max", "0.175", "0.185","0.25"
+
+      ]
+
+    },
+
     {
       "name": "Python: train semantic_nerfw",
       "type": "python",
