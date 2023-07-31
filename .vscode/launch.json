@@ -5,6 +5,8 @@
   "version": "0.2.0",
   "configurations": [
 
+    
+
     {
       "name": "Launch Chrome against localhost",
       "request": "launch",
@@ -97,7 +99,7 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\test-sphere\\nerfacto\\2023-04-27_164800/config.yml",
-        "--output-dir=exports/tri-tsdf/",
+        "--output-dir=exports/tri-tsdf/test-sphere",
         "--use-bounding-box=True",
         "--bounding-box-min", "0.004000000000000031", "-0.25200000000000006", "-0.11099999999999997",
         "--bounding-box-max", "0.30400000000000005", "0.04799999999999993","0.189"
@@ -116,10 +118,28 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-07-20_154555/config.yml",
-        "--output-dir=exports/tri-tsdf/",
+        "--output-dir=exports/tri-tsdf/statue",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.175", "-0.065", "-0.35",
         "--bounding-box-max", "0.175", "0.185","0.25"
+
+      ]
+
+    },
+    {
+      "name": "Python: export lego SSAN",
+      "type": "python",
+      "request": "launch",
+      "program": "scripts/exporter.py",
+      "console": "integratedTerminal",
+      "args": [
+        "Marching-tet",
+        //Change to any preprepared nerfacto model. 
+        "--load-config outputs/data/nerf-synthetic/lego/nerfacto/2023-03-24_124319/config.yml",
+        "--output-dir=exports/tri-tsdf/lego",
+        "--use-bounding-box=True",
+        "--bounding-box-min", "-0.3", "-0.4", "-0.75",
+        "--bounding-box-max", "0.3", "0.19","-0.25"
 
       ]
 

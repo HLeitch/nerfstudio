@@ -713,6 +713,8 @@ class ExportMarchingTetTSDFMesh(Exporter):
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True)
 
+        print(self.output_dir)
+
         _, pipeline, _ = eval_setup(self.load_config)
         ##torch.set_anomaly_enabled(True,True)
         ssan_utils.export_ssan(
