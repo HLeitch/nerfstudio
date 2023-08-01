@@ -220,7 +220,7 @@ class TSDFfromSSAN:
         while _x < self.voxel_coords.shape[1]:
             while _y <self.voxel_coords.shape[2]:
                 # z and y switch to output in correct orientation
-                self.values[_x,_y,:] = self.surface_mlp((grid[_x,:,_y,:]))[:,0]
+                self.values[_x,_y,:] = self.surface_mlp((self.voxel_coords[:,_x,:,_y]).t())[:,0]
                 _y+=1
             _x+=1
             _y=0
@@ -240,7 +240,7 @@ class TSDFfromSSAN:
             vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
 
             # adjust voxel size to x,z,y as above
-            voxel_size = self.voxel_size.cpu() * torch.tensor((0.5,1,0.5))
+            voxel_size = self.voxel_size.cpu() ##* torch.tensor((0.5,1,0.5))
             voxel_size = torch.tensor((voxel_size[0],voxel_size[2],voxel_size[1]))
             voxel_size = voxel_size/(voxel_size.sum())
 
@@ -395,7 +395,8 @@ class TSDFfromSSAN:
                         print("mloutputs contain nan")
 
                     surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
-                    normal_consistency_value = 0 #self.normal_consistency_loss(mlp_prediction_surface)
+                    # input of surface normal part of prediction
+                    normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
                     smoothness_loss = 0 #self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
                     
                     profiler.add_scalar("Loss/SurfaceLoss", surface_loss_value/(mlp_prediction_surface[:,0].shape[0]))
@@ -407,12 +408,15 @@ class TSDFfromSSAN:
                     norm_smooth_loss +=smoothness_loss
 
 
-                    surface_loss_value *= 0.0001
-                    normal_consistency_value *= 0.000000001
+                    surface_loss_value *= 0.00001
+                    normal_consistency_value *= 0.000001
                     smoothness_loss *= 0.0000001
 
                     tot_loss = (surface_loss_value) + (normal_consistency_value) +(smoothness_loss)
                     
+                    profiler.add_scalar("LossContribution/SurfaceLoss", surface_loss_value/tot_loss)
+                    profiler.add_scalar("LossContribution/NormalRegularisation", normal_consistency_value/tot_loss)
+                    profiler.add_scalar("LossContribution/NormalSmoothnessLoss", smoothness_loss/tot_loss)
                     tot_loss *=1
                     counter+=1
                     #print(f"outputs = {outputs}")
@@ -474,36 +478,29 @@ class TSDFfromSSAN:
 
 
     ###uses finite difference to approximate a series of normals between the 16th and 84th percentile depths.
-    def normal_consistency_loss(self,output_prediction: torch.Tensor,normal_reg_constant: int = 10):
-        # linear_spaces = torch.linspace(0,1,normal_reg_constant).cuda()
-        # output_divider = int(output_prediction.shape[0]/3)
-                                
-        normal_outside = output_prediction[output_divider:output_divider*2,1:]
-        ##debug##
-        out_orig = output_prediction[output_divider:output_divider*2,1:]
-        in_orig = output_prediction[output_divider*2:,1:]
+    ## This function presumes input of only the normals outputted from the mlp
+    def normal_consistency_loss(self, output_pred_outside: torch.Tensor, output_pred_inside: torch.Tensor, normal_reg_constant: int = 10):
+        linear_spaces = torch.linspace(0,1,normal_reg_constant).cuda()
 
-        ##If normal is [0,0,0] replace the nan from normalising with a 0. This gives max loss if the opposing
-        # value is not 0.
-        normal_outside = safe_normalize(normal_outside)
+        ## Normalise outputs from mlp 
+        normal_outside = safe_normalize(output_pred_outside)
         if torch.isnan(normal_outside).any():
-            print("NOOOOO")
+            sum_nan = torch.isnan(normal_outside).sum()
+            print(f"Nan value calculated from mlp normal. Outside has {sum_nan}/{normal_outside.shape} nans ")
             normal_outside = torch.nan_to_num(normal_outside)
-
-        normal_inside = output_prediction[output_divider*2:,1:]
-
-        normal_inside = safe_normalize(normal_inside)
+        
+        normal_inside = safe_normalize(output_pred_inside)
         if torch.isnan(normal_inside).any():
-            print("NOOOOO")
+            sum_nan = torch.isnan(normal_inside).sum()
+            print(f"Nan value calculated from mlp normal. Inside has {sum_nan}/{normal_inside.shape} nans ")
             normal_inside = torch.nan_to_num(normal_inside)
 
         norm_difference = (normal_inside - normal_outside)
-        ##print(f"norm_difference: {norm_difference} \n{norm_difference.shape}")
 
         norm_difference = norm_difference[None,:,:]
         norm_difference = norm_difference.expand(normal_reg_constant,-1,-1).cuda()
         if torch.isnan(norm_difference).any():
-            print("NOOOOO")
+            print("difference between inside and outside norms has a nan! Training of the normals has failed.")
 
         outside_expanded = normal_outside[None,:,:]
 
@@ -516,6 +513,9 @@ class TSDFfromSSAN:
             counter = counter+1
         linear_spaces_exp = (linear_spaces_exp*norm_difference)
 
+
+        ## add all the samples per ray together. If all the same normal_regularity will = 10 so
+        ## error will be 0.
         normal_samples = outside_expanded + linear_spaces_exp
         normal_samples = normal_samples.sum(dim=0)
         normal_samples = normal_samples.squeeze()
@@ -523,9 +523,9 @@ class TSDFfromSSAN:
         normal_regularity = torch.linalg.norm(normal_samples)
         normal_regularity = normal_regularity-normal_reg_constant
         normal_regularity = normal_regularity.sum(dtype=torch.float32)
-        return 0##normal_regularity**2
 
-
+        return normal_regularity**2
+    
     def surface_loss(self,output_prediction_surface: torch.Tensor,
                      output_prediction_outside: torch.Tensor,
                      output_prediction_inside: torch.Tensor,
@@ -747,7 +747,7 @@ def export_ssan(
     bounding_box_min = torch.tensor(bounding_box_min).to(device)
     bounding_box_max = torch.tensor(bounding_box_max).to(device)
 
-    dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
+    ##dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
     dataset.to_2d_array()
 
