@@ -408,8 +408,8 @@ class TSDFfromSSAN:
                     # norm_smooth_loss +=smoothness_loss
 
 
-                    surface_loss_value *= 0.000001
-                    normal_consistency_value *= 0.0000001
+                    surface_loss_value *= 0.0001
+                    normal_consistency_value *= 0.00001
                     smoothness_loss *= 0.0000001
 
                     tot_loss = (surface_loss_value) + (normal_consistency_value) +(smoothness_loss)
@@ -571,7 +571,7 @@ def export_ssan(
     depth_output_name: str = "depth",
     rgb_output_name: str = "rgb",
     resolution: Union[int, List[int]] = field(default_factory=lambda: [256, 256, 256]),
-    batch_size: int = 10,
+    batch_size: int = 2,
     use_bounding_box: bool = True,
     bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
     bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
@@ -743,13 +743,14 @@ def export_ssan(
     # outside_positions = dataset.depth_16
     # inside_positions = dataset.depth_84
 
-    ## Normalise all data between 0 and 1 according to the bounding box
-    bounding_box_min = torch.tensor(bounding_box_min).to(device)
-    bounding_box_max = torch.tensor(bounding_box_max).to(device)
 
-    # dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
     dataset.to_2d_array()
+
+    ## Remove rays which terminate outside the bounding box. A rays 
+    bounding_box_min = torch.tensor(bounding_box_min).to(device)
+    bounding_box_max = torch.tensor(bounding_box_max).to(device)
+    remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
 
     remove_inf_and_nan(dataset)
     ## Currently shuffles based on image number, thus the model is trained on an image
@@ -798,9 +799,9 @@ def export_ssan(
     ##batch_size number of images worth of rays randomly selected.
     ## batch_size * img_width * img_height 
     num_rays = int(batch_size) * int(cameras.cx.mean()) * int(cameras.cy.mean())
-    divisions = 50
+    divisions = 75
    ##Batches changed from original tsdf integration to accomodate 2d input
-    for e in range(12):
+    for e in range(6):
         print(f"### EPOCH {e}####\n################")
         for i in range(0, dataset.depth_50.shape[0], num_rays):
             tsdf_surface.integrate_tri_tsdf(
@@ -830,14 +831,76 @@ def export_ssan(
     CONSOLE.print("Saved SSAN Mesh")
 
 ##Works only over 2 Dimensional data##
-def remove_inf_and_nan(data: SSANDataset):
-    is_finite = torch.isfinite(data.depth_50)
-    is_inside = torch.where(data.depth_50.abs()<=1,True,False)
-    print(is_finite.shape)
+def remove_rays_outside_AABB(data: SSANDataset, AABB_min: torch.Tensor, AABB_max: torch.Tensor):
+    greater_than_min = torch.where(data.depth_50 >= AABB_min,True,False)
+    less_than_max = torch.where(data.depth_50 <= AABB_max,True,False)
 
-    ### how many 3d vectors are there?
-    finite_length = is_finite.sum()/3
-    valid_datums = torch.any((torch.bitwise_or(is_finite,is_inside)),dim=1)
+    print("#########Bounding box rays##########")
+
+    valid_datums = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
+    print(f"50 depth data {valid_datums.shape}")
+
+    greater_than_min = torch.where(data.depth_16 >= AABB_min,True,False)
+    less_than_max = torch.where(data.depth_16 <= AABB_max,True,False)
+
+    valid_datums_16 = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
+    print(f"16 depth data {valid_datums_16.shape}")
+
+    greater_than_min = torch.where(data.depth_84 >= AABB_min,True,False)
+    less_than_max = torch.where(data.depth_84 <= AABB_max,True,False)
+
+    valid_datums_84 = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
+    print(f"84 depth data {valid_datums_84.shape}")
+
+    print("####################################")
+    _d50 = data.depth_50[valid_datums]
+    data.depth_50 = _d50
+    del _d50
+
+    _d16 = data.depth_16[valid_datums]
+    data.depth_16 = _d16
+    del _d16
+
+    _d84 = data.depth_84[valid_datums]
+    data.depth_84 = _d84
+    del _d84
+
+    _norms = data.surface_normals[valid_datums]
+    data.surface_normals = _norms
+    del _norms
+
+    _orig = data.ray_origins[valid_datums]
+    data.ray_origins = _orig
+    del _orig
+
+    _dir = data.ray_directions[valid_datums]
+    data.ray_directions = _dir
+    del _dir
+
+    _cam = data.ray_cam_inds[valid_datums]
+    data.ray_cam_inds = _cam
+    del _cam
+
+##Works only over 2 Dimensional data##
+def remove_inf_and_nan(data: SSANDataset):
+    valid_datums = torch.isfinite(data.depth_50)
+
+    valid_datums = torch.any(valid_datums,dim=1)
+
+    valid_datums_16 = torch.isfinite(data.depth_16)
+    valid_datums_16 = torch.any(valid_datums_16,dim=1)
+
+    valid_datums_84 = torch.isfinite(data.depth_84)
+    valid_datums_84 = torch.any(valid_datums_84,dim=1)
+
+    print("######### Not finite rays ##########")
+
+    print(f"50 depth data {valid_datums.shape}")
+    print(f"16 depth data {valid_datums_16.shape}")
+    print(f"84 depth data {valid_datums_84.shape}")
+    print("####################################")
+
+
     
     _d50 = data.depth_50[valid_datums]
     data.depth_50 = _d50
