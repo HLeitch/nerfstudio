@@ -238,3 +238,5 @@ TEST_SPHERE -0.082.obj
 TEST_SPHERE -0.09100000000000001.obj
 
 TEST_SPHERE -0.1.obj
+
+images/room.png

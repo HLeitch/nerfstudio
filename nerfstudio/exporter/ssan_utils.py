@@ -412,7 +412,7 @@ class TSDFfromSSAN:
                     normal_consistency_value *= 0.00001
                     smoothness_loss *= 0.0000001
 
-                    tot_loss = (surface_loss_value) + (normal_consistency_value) +(smoothness_loss)
+                    tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss)
                     
                     profiler.add_scalar("LossContribution/SurfaceLoss", surface_loss_value/tot_loss)
                     profiler.add_scalar("LossContribution/NormalRegularisation", normal_consistency_value/tot_loss)
@@ -648,33 +648,33 @@ def export_ssan(
     cameras = cameras[0:125]
 
     #we turn off distortion when populating the TSDF
-    # color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
-    #     pipeline,
-    #     cameras,
-    #     rgb_output_name=rgb_output_name,
-    #     surface_depth_output_name=depth_output_name,
-    #     outside_depth_output_name= "depth_16",
-    #     inside_depth_output_name= "depth_84",
-    #     rendered_resolution_scaling_factor=1.0 / downscale_factor,
-    #     disable_distortion=True,
-    #     use_aabb=True,
-    #     bounding_box_min=bounding_box_min,
-    #     bounding_box_max=bounding_box_max
-    # )
+    color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
+        pipeline,
+        cameras,
+        rgb_output_name=rgb_output_name,
+        surface_depth_output_name=depth_output_name,
+        outside_depth_output_name= "depth_16",
+        inside_depth_output_name= "depth_84",
+        rendered_resolution_scaling_factor=1.0 / downscale_factor,
+        disable_distortion=True,
+        use_aabb=True,
+        bounding_box_min=bounding_box_min,
+        bounding_box_max=bounding_box_max
+    )
     # Normal Sampling##
 
     # 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
     # Nc in eq 12 of nerfmeshing.
 
-    # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
-    # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
-    # depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
-    # print("depth_images shape: {depth_images_50.shape}")
-    # surface_normals = torch.tensor(np.array(surface_normals), device=device)
-    # ray_origins = torch.tensor(np.array(ray_origins), device=device)
-    # ray_directions = torch.tensor(np.array(ray_directions), device=device)
-    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
-    # color_images = torch.tensor(np.array(color_images), device=device)
+    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
+    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
+    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
+    print("depth_images shape: {depth_images_50.shape}")
+    surface_normals = torch.tensor(np.array(surface_normals), device=device)
+    ray_origins = torch.tensor(np.array(ray_origins), device=device)
+    ray_directions = torch.tensor(np.array(ray_directions), device=device)
+    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+    color_images = torch.tensor(np.array(color_images), device=device)
 
     try:
         os.mkdir(f"./ssan/")
@@ -694,63 +694,30 @@ def export_ssan(
     # np.save("color_images.npy",arr=np.array(color_images.cpu()))
 
 
-    depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
-    depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
-    depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
-    surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
-    ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
-    ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
-    ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
-    color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
+    # depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
+    # depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
+    # depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
+    # surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
+    # ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
+    # ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
+    # ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
+    # color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
     dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
 
     os.chdir("..")
 
     print(f"{depth_images_50.shape}")
-    ##Image representations of above data##
-    x = 6
-    # while x < 12:
-    #     testdata = depth_images_50#-depth_images_16
-    #     img = np.array(testdata[x].abs().squeeze().cpu())
-    #     skio.imshow(arr= img)
-    #     x+=1
-    
-    # x = 0
-
-    # fig = plt.figure(figsize=(10,10))
-    # ax = plt.axes(projection ="3d")
-    # datums = np.array(dataset.depth_50.cpu())
-    
-    # ax.scatter3D(datums[0,:,:,0],datums[0,:,:,1],datums[0,:,:,2])
-    # plt.show()
-
-    # testdata = dataset.ray_origins.cpu()#-depth_images_16
-    # while x < 100:
-
-
-    #     img = np.array(testdata[x])
-
-    #     plt.imshow(img)
-    #     plt.title(f"image {x}")
-    #     plt.show(block=False)
-    #     plt.pause(1.5)
-        
-    #     plt.close()
-    #     x+=1
-
 
     dataset.depth_to_point()
-    # outside_positions = dataset.depth_16
-    # inside_positions = dataset.depth_84
-
-
 
     dataset.to_2d_array()
 
-    ## Remove rays which terminate outside the bounding box. A rays 
+    ## Remove rays which terminate outside the bounding box
     bounding_box_min = torch.tensor(bounding_box_min).to(device)
     bounding_box_max = torch.tensor(bounding_box_max).to(device)
-    remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
+
+    #remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
+    dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
     remove_inf_and_nan(dataset)
     ## Currently shuffles based on image number, thus the model is trained on an image
@@ -765,23 +732,8 @@ def export_ssan(
     #     dataset.ray_directions= newOrder[5]
     #     dataset.ray_cam_inds = newOrder[6]
 
-    
-    # camera extrinsics and intrinsics
-    # c2w: TensorType["N", 3, 4] = cameras.camera_to_worlds.to(device)
-    # # make c2w homogeneous
-    # c2w = torch.cat([c2w, torch.zeros(c2w.shape[0], 1, 4, device=device)], dim=1)
-    # c2w[:, 3, 3] = 1
-    # K: TensorType["N", 3, 3] = cameras.get_intrinsics_matrices().to(device)
     color_images = torch.tensor(np.array(color_images.cpu()), device=device).permute(0, 3, 1, 2)  # shape (N, 3, H, W)
-    # depth_images_50 = torch.tensor(depth_images_50, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # depth_images_16 = torch.tensor(depth_images_16, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # depth_images_84 = torch.tensor(depth_images_84, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # surface_normals = torch.tensor(surface_normals, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
-    # normal_samples = torch.tensor(normal_samples, device=device).permute(0,3,1,2) # shape (N, 1, H, W)
-    # normal_regularity = torch.tensor(normal_regularity, device=device).permute(0,3,1,2)   # shape (N, 1, H, W)
-    # ray_origins = torch.tensor(ray_origins, device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # ray_directions = torch.tensor(np.array(ray_directions.cpu()), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
-    # #ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device).permute(0, 3, 1, 2)  # shape (N, 1, H, W)
+
     CONSOLE.print("Integrating the Surface TSDF")
 
     depth_images_50 = dataset.depth_50
@@ -799,9 +751,9 @@ def export_ssan(
     ##batch_size number of images worth of rays randomly selected.
     ## batch_size * img_width * img_height 
     num_rays = int(batch_size) * int(cameras.cx.mean()) * int(cameras.cy.mean())
-    divisions = 75
+    divisions = 50
    ##Batches changed from original tsdf integration to accomodate 2d input
-    for e in range(6):
+    for e in range(3):
         print(f"### EPOCH {e}####\n################")
         for i in range(0, dataset.depth_50.shape[0], num_rays):
             tsdf_surface.integrate_tri_tsdf(
@@ -835,24 +787,8 @@ def remove_rays_outside_AABB(data: SSANDataset, AABB_min: torch.Tensor, AABB_max
     greater_than_min = torch.where(data.depth_50 >= AABB_min,True,False)
     less_than_max = torch.where(data.depth_50 <= AABB_max,True,False)
 
-    print("#########Bounding box rays##########")
-
     valid_datums = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
-    print(f"50 depth data {valid_datums.shape}")
 
-    greater_than_min = torch.where(data.depth_16 >= AABB_min,True,False)
-    less_than_max = torch.where(data.depth_16 <= AABB_max,True,False)
-
-    valid_datums_16 = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
-    print(f"16 depth data {valid_datums_16.shape}")
-
-    greater_than_min = torch.where(data.depth_84 >= AABB_min,True,False)
-    less_than_max = torch.where(data.depth_84 <= AABB_max,True,False)
-
-    valid_datums_84 = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
-    print(f"84 depth data {valid_datums_84.shape}")
-
-    print("####################################")
     _d50 = data.depth_50[valid_datums]
     data.depth_50 = _d50
     del _d50
@@ -883,25 +819,12 @@ def remove_rays_outside_AABB(data: SSANDataset, AABB_min: torch.Tensor, AABB_max
 
 ##Works only over 2 Dimensional data##
 def remove_inf_and_nan(data: SSANDataset):
-    valid_datums = torch.isfinite(data.depth_50)
+    is_finite = torch.isfinite(data.depth_50)
+    is_inside = torch.where(data.depth_50.abs() <= 1, True, False)
 
-    valid_datums = torch.any(valid_datums,dim=1)
-
-    valid_datums_16 = torch.isfinite(data.depth_16)
-    valid_datums_16 = torch.any(valid_datums_16,dim=1)
-
-    valid_datums_84 = torch.isfinite(data.depth_84)
-    valid_datums_84 = torch.any(valid_datums_84,dim=1)
-
-    print("######### Not finite rays ##########")
-
-    print(f"50 depth data {valid_datums.shape}")
-    print(f"16 depth data {valid_datums_16.shape}")
-    print(f"84 depth data {valid_datums_84.shape}")
-    print("####################################")
-
-
-    
+    ### how many 3d vectors are there?
+    finite_length = is_finite.sum()/3
+    valid_datums = torch.any((torch.bitwise_and(is_finite,is_inside)),dim=1)
     _d50 = data.depth_50[valid_datums]
     data.depth_50 = _d50
     del _d50
