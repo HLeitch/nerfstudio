@@ -648,33 +648,33 @@ def export_ssan(
     cameras = cameras[0:125]
 
     #we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
-        pipeline,
-        cameras,
-        rgb_output_name=rgb_output_name,
-        surface_depth_output_name=depth_output_name,
-        outside_depth_output_name= "depth_16",
-        inside_depth_output_name= "depth_84",
-        rendered_resolution_scaling_factor=1.0 / downscale_factor,
-        disable_distortion=True,
-        use_aabb=True,
-        bounding_box_min=bounding_box_min,
-        bounding_box_max=bounding_box_max
-    )
+    # color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
+    #     pipeline,
+    #     cameras,
+    #     rgb_output_name=rgb_output_name,
+    #     surface_depth_output_name=depth_output_name,
+    #     outside_depth_output_name= "depth_16",
+    #     inside_depth_output_name= "depth_84",
+    #     rendered_resolution_scaling_factor=1.0 / downscale_factor,
+    #     disable_distortion=True,
+    #     # use_aabb=True,
+    #     # bounding_box_min=bounding_box_min,
+    #     # bounding_box_max=bounding_box_max
+    # )
     # Normal Sampling##
 
     # 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
     # Nc in eq 12 of nerfmeshing.
 
-    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
-    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
-    print("depth_images shape: {depth_images_50.shape}")
-    surface_normals = torch.tensor(np.array(surface_normals), device=device)
-    ray_origins = torch.tensor(np.array(ray_origins), device=device)
-    ray_directions = torch.tensor(np.array(ray_directions), device=device)
-    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
-    color_images = torch.tensor(np.array(color_images), device=device)
+    # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
+    # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
+    # depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
+    # print("depth_images shape: {depth_images_50.shape}")
+    # surface_normals = torch.tensor(np.array(surface_normals), device=device)
+    # ray_origins = torch.tensor(np.array(ray_origins), device=device)
+    # ray_directions = torch.tensor(np.array(ray_directions), device=device)
+    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+    # color_images = torch.tensor(np.array(color_images), device=device)
 
     try:
         os.mkdir(f"./ssan/")
@@ -694,14 +694,14 @@ def export_ssan(
     # np.save("color_images.npy",arr=np.array(color_images.cpu()))
 
 
-    # depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
-    # depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
-    # depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
-    # surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
-    # ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
-    # ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
-    # ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
-    # color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
+    depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
+    depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
+    depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
+    surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
+    ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
+    ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
+    ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
+    color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
     dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
 
     os.chdir("..")
@@ -751,7 +751,7 @@ def export_ssan(
     ##batch_size number of images worth of rays randomly selected.
     ## batch_size * img_width * img_height 
     num_rays = int(batch_size) * int(cameras.cx.mean()) * int(cameras.cy.mean())
-    divisions = 50
+    divisions = 150
    ##Batches changed from original tsdf integration to accomodate 2d input
     for e in range(3):
         print(f"### EPOCH {e}####\n################")
@@ -825,6 +825,8 @@ def remove_inf_and_nan(data: SSANDataset):
     ### how many 3d vectors are there?
     finite_length = is_finite.sum()/3
     valid_datums = torch.any((torch.bitwise_and(is_finite,is_inside)),dim=1)
+    
+    print(f"Rays used {data.depth_16.shape}/{data.depth_50[valid_datums].shape}")
     _d50 = data.depth_50[valid_datums]
     data.depth_50 = _d50
     del _d50
@@ -902,7 +904,10 @@ class SSANDataset(dataset.Dataset):
         self.depth_50 = torch.reshape(self.depth_50,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_50.shape[3]])
         self.depth_16 = torch.reshape(self.depth_16,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_16.shape[3]])
         self.depth_84 = torch.reshape(self.depth_84,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_84.shape[3]])
+        
         self.surface_normals = torch.reshape(self.surface_normals,[param_shape[1]*param_shape[0]*param_shape[2],self.surface_normals.shape[3]])
+        self.surface_normals = safe_normalize(self.surface_normals)
+        
         self.ray_origins = torch.reshape(self.ray_origins,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_origins.shape[3]])
         self.ray_directions = torch.reshape(self.ray_directions,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_directions.shape[3]])
         self.ray_cam_inds = torch.reshape(self.ray_cam_inds,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_cam_inds.shape[3]])

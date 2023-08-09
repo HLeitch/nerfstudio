@@ -21,6 +21,7 @@ Export utils such as structs, point cloud generation, and rendering code.
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -466,8 +467,12 @@ def render_trajectory_tri_tsdf(
                 sys.exit(1)
             images.append(outputs[rgb_output_name].cpu().numpy())
 
-            # plt.imshow(outputs[rgb_output_name].cpu().numpy())
+            # plt.imshow(outputs["normals"].cpu().numpy())
             # plt.show()
+
+            # plt.imshow(outputs[surface_depth_output_name].cpu().numpy())
+            # plt.show()
+
 
             depths_surface.append(outputs[surface_depth_output_name].cpu().numpy())
             depths_outside.append(outputs[outside_depth_output_name].cpu().numpy())
