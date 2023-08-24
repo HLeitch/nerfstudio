@@ -704,6 +704,9 @@ class ExportMarchingTetTSDFMesh(Exporter):
     """If using xatlas for unwrapping, the pixels per side of the texture image."""
     target_num_faces: Optional[int] = 50000
     """Target number of faces for the mesh to texture."""
+    loss_weights: Tuple[float,float,float,float] = (0.0001,0.00001,0.000001,0.00001)
+    """DEBUG: Change the weights of the losses applied during training of the tsdf.\n surface, Normal Consist., Normal smooth., Normal orient."""
+    
 
     def main(self) -> None:
         """Export mesh"""
@@ -717,7 +720,7 @@ class ExportMarchingTetTSDFMesh(Exporter):
 
         _, pipeline, _ = eval_setup(self.load_config)
         ##torch.set_anomaly_enabled(True,True)
-        ssan_utils.export_ssan(
+        ssan = ssan_utils.export_ssan(
             pipeline,
             self.output_dir,
             self.downscale_factor,
@@ -728,7 +731,10 @@ class ExportMarchingTetTSDFMesh(Exporter):
             use_bounding_box=self.use_bounding_box,
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
+            loss_weights=self.loss_weights
         )
+
+
         return 
         # possibly
         # texture the mesh with NeRF and export to a mesh.obj file

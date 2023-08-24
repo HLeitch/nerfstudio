@@ -70,7 +70,6 @@ class TSDFfromSSAN:
     ##taken from nerfacto field parameters##
     surface_mlp: torch.nn.Sequential
     optimiser: torch.optim.Optimizer
-    
 
     colors: TensorType["xdim", "ydim", "zdim", 3]
     """TSDF colors for each voxel."""
@@ -206,10 +205,10 @@ class TSDFfromSSAN:
         xx, yy, zz = np.meshgrid(X,Y,Z)
         print(xx[0,0,:],yy[0,0,:],zz[0,0,:])
 
-        grid = torch.zeros((self.voxel_coords.shape[1],self.voxel_coords.shape[2],self.voxel_coords.shape[3],3))
-        grid[:,:,:,0] = torch.Tensor(xx)
-        grid[:,:,:,1] = torch.Tensor(yy)
-        grid[:,:,:,2] = torch.Tensor(zz)
+        # grid = torch.zeros((self.voxel_coords.shape[1],self.voxel_coords.shape[2],self.voxel_coords.shape[3],3))
+        # grid[:,:,:,0] = torch.Tensor(xx)
+        # grid[:,:,:,1] = torch.Tensor(yy)
+        # grid[:,:,:,2] = torch.Tensor(zz)
 
         ##results = -torch.ones(self.voxel_coords.shape[1],self.voxel_coords.shape[2],self.voxel_coords.shape[3])
         ##grid = grid.reshape(-1,3)
@@ -236,7 +235,14 @@ class TSDFfromSSAN:
 
         #tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(0.0,-0.1,9)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(0.1,-0.1,19)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        
+        try:
+            os.mkdir(f"{output_dir}")
+        except:
+            print("directory Exists")
+        os.chdir(output_dir)
+
         for x in arr:
             vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
 
@@ -254,7 +260,7 @@ class TSDFfromSSAN:
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
             
-            mcubes.export_obj(vertices,triangles,f"{output_dir}/TEST_{x}.obj")
+            mcubes.export_obj(vertices,triangles,f"TEST_{x}.obj")
 
         ##return vertices,faces,normals
 
@@ -321,6 +327,8 @@ class TSDFfromSSAN:
         depth_images_inside: TensorType["batch", 3, "height", "width"],
         ray_origins: TensorType["batch", 3, "height", "width"],
         surface_normals: TensorType["batch", 3, "height", "width"],
+        ray_direction: TensorType["batch",3,"height","width"],
+        loss_weights: Tuple[float,float,float,float],
         profiler,
         ##color_images: Optional[TensorType["batch", 3, "height", "width"]] = None,
         mask_images: Optional[TensorType["batch", 1, "height", "width"]] = None,
@@ -364,6 +372,7 @@ class TSDFfromSSAN:
                     inside_points = depth_images_inside[batches[x]:batches[x+1]]
                     normal_gt = surface_normals[batches[x]:batches[x+1]]
                     origins = ray_origins[batches[x]:batches[x+1]]
+                    directions = ray_direction[batches[x]:batches[x+1]]
 
                     # print(f"Depth images: {depth_images[i]}")
                     # print(f"surface images: {surface_points[i]}")
@@ -398,26 +407,36 @@ class TSDFfromSSAN:
                     surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
-                    smoothness_loss = 0 #self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
+                    smoothness_loss = self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
+                    orientation_loss = self.normal_orientation_loss(mlp_prediction_surface[:,1:],directions)
                     
                     profiler.add_scalar("Loss/SurfaceLoss", surface_loss_value/(mlp_prediction_surface[:,0].shape[0]))
                     profiler.add_scalar("Loss/NormalRegularisation", normal_consistency_value/(mlp_prediction_surface[:,0].shape[0]))
                     profiler.add_scalar("Loss/NormalSmoothnessLoss", smoothness_loss/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/NormalOrientationLoss", orientation_loss/(mlp_prediction_surface[:,0].shape[0]))
 
                     # surf_loss_sum += surface_loss_value
                     # norm_reg_loss_avg += normal_consistency_value
                     # norm_smooth_loss +=smoothness_loss
 
 
-                    surface_loss_value *= 0.0001
-                    normal_consistency_value *= 0.00001
-                    smoothness_loss *= 0.0000001
+                    surface_loss_value *= 0.0001#loss_weights[0]
+                    normal_consistency_value *= 0.000001#loss_weights[1]
+                    smoothness_loss *= 0.0001#loss_weights[2]
+                    orientation_loss *= 0.00001#loss_weights[3]
 
-                    tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss)
+                    tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss) + orientation_loss
                     
                     profiler.add_scalar("LossContribution/SurfaceLoss", surface_loss_value/tot_loss)
                     profiler.add_scalar("LossContribution/NormalRegularisation", normal_consistency_value/tot_loss)
                     profiler.add_scalar("LossContribution/NormalSmoothnessLoss", smoothness_loss/tot_loss)
+                    profiler.add_scalar("LossContribution/NormalOrientationLoss", orientation_loss/tot_loss)
+                    
+                    ##TEMPORARY. Allows nan failures to be displayed in tensorboard graphs
+                    if torch.isnan(mlp_prediction_surface).any():
+                        print("mloutputs contain nan")
+                        quit()
+
                     tot_loss *=1
                     counter+=1
                     #print(f"outputs = {outputs}")
@@ -449,6 +468,7 @@ class TSDFfromSSAN:
                 print(f"avgloss surf ---> {surf_loss_sum/depth_images[:,0].shape[0]}")
                 print(f"avgloss normreg-> {norm_reg_loss_avg/depth_images[:,0].shape[0]}")
                 print(f"avgloss normSmoo-> {norm_smooth_loss/depth_images[:,0].shape[0]}")
+                print(f"avgloss norm orient-> {norm_smooth_loss/depth_images[:,0].shape[0]}")
                 print(f"ray samples per batch = {surface_points.shape[0]}")
 
 
@@ -457,11 +477,18 @@ class TSDFfromSSAN:
         a = torch.cuda.memory_allocated(0)
 
         profiler.add_scalar("gpu-usage",a/r)
-            
 
-    def normal_smoothness_loss(self,output_prediction: torch.Tensor, expected_outputs: Torch.tensor):
+    def normal_orientation_loss(self, predicted_normals: torch.Tensor, gt_direction: torch.Tensor):
+        ## dot product can be done through torch.tensordot for multiple elements
+        dot_prod = predicted_normals*gt_direction
+        dot_prod = dot_prod.sum(dim=1)
+        #dot_prod = torch.tensordot(predicted_normals,gt_direction,dims=2)
+        loss = torch.max(torch.zeros_like(dot_prod),dot_prod)
+        return torch.sum(loss)
+
+    def normal_smoothness_loss(self,output_prediction: torch.Tensor, expected_outputs: torch.tensor):
         # output_divider = int(output_prediction.shape[0]/3)
-        # samples = output_prediction[0:output_divider,1:]
+        samples = output_prediction[:,1:]
 
         samples = safe_normalize(samples)
         expected_outputs = safe_normalize(expected_outputs)
@@ -576,6 +603,7 @@ def export_ssan(
     use_bounding_box: bool = True,
     bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
     bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    loss_weights: Tuple[float,float,float,float] = (0.0001,0.00001,0.000001,0.00001),
 ):
     """Export a TSDF mesh from a pipeline.
 
@@ -590,6 +618,7 @@ def export_ssan(
         use_bounding_box: Whether to use a bounding box for the TSDF volume.
         bounding_box_min: Minimum coordinates of the bounding box.
         bounding_box_max: Maximum coordinates of the bounding box.
+        loss_weights: DEBUG: Change the weights of the losses applied during training of the tsdf.\n surface, Normal Consist., Normal smooth., Normal orient.
     """
 
 
@@ -649,40 +678,40 @@ def export_ssan(
     cameras = cameras[0:125]
 
     #we turn off distortion when populating the TSDF
-    color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
-        pipeline,
-        cameras,
-        rgb_output_name=rgb_output_name,
-        surface_depth_output_name=depth_output_name,
-        outside_depth_output_name= "depth_16",
-        inside_depth_output_name= "depth_84",
-        rendered_resolution_scaling_factor=1.0 / downscale_factor,
-        disable_distortion=True,
-        use_aabb=True,
-        bounding_box_min=bounding_box_min,
-        bounding_box_max=bounding_box_max
-    )
+    # color_images, depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds = render_trajectory_tri_tsdf(
+    #     pipeline,
+    #     cameras,
+    #     rgb_output_name=rgb_output_name,
+    #     surface_depth_output_name=depth_output_name,
+    #     outside_depth_output_name= "depth_16",
+    #     inside_depth_output_name= "depth_84",
+    #     rendered_resolution_scaling_factor=1.0 / downscale_factor,
+    #     disable_distortion=True,
+    #     # use_aabb=True,
+    #     # bounding_box_min=bounding_box_min,
+    #     # bounding_box_max=bounding_box_max
+    # )
     # Normal Sampling##
 
     # 10 in NeRF meshing paper. Can be altered though would require altering of hyperparameter in loss function as well
     # Nc in eq 12 of nerfmeshing.
 
-    depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
-    depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
-    depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
-    print("depth_images shape: {depth_images_50.shape}")
-    surface_normals = torch.tensor(np.array(surface_normals), device=device)
-    ray_origins = torch.tensor(np.array(ray_origins), device=device)
-    ray_directions = torch.tensor(np.array(ray_directions), device=device)
-    ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
-    color_images = torch.tensor(np.array(color_images), device=device)
-
+    # depth_images_50 = torch.tensor(np.array(depth_images_50), device=device)
+    # depth_images_16 = torch.tensor(np.array(depth_images_16), device=device)
+    # depth_images_84 = torch.tensor(np.array(depth_images_84), device=device)
+    # print("depth_images shape: {depth_images_50.shape}")
+    # surface_normals = torch.tensor(np.array(surface_normals), device=device)
+    # ray_origins = torch.tensor(np.array(ray_origins), device=device)
+    # ray_directions = torch.tensor(np.array(ray_directions), device=device)
+    # ray_cam_inds = torch.tensor(np.array(ray_cam_inds), device=device)
+    # color_images = torch.tensor(np.array(color_images), device=device)
+    base_dir = os.curdir
     try:
-        os.mkdir(f"./ssan/")
+        os.mkdir(f"./ssan/testsphere")
     except:
         print("directory Exists")
     
-    os.chdir("./ssan/")
+    os.chdir("./ssan/testsphere")
 
     ##with open("/test_arrays/depth_images_50","wb") as f:
     # np.save("depth_images_50.npy",arr=np.array(depth_images_50.cpu()))
@@ -693,20 +722,23 @@ def export_ssan(
     # np.save("ray_directions.npy",arr=np.array(ray_directions.cpu()))
     # np.save("ray_cam_inds.npy",arr=np.array(ray_cam_inds.cpu()))
     # np.save("color_images.npy",arr=np.array(color_images.cpu()))
-    # print(f"Arrays saved to {os.curdir}")
+    print(f"Arrays saved to {os.curdir}")
 
 
-    # depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
-    # depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
-    # depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
-    # surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
-    # ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
-    # ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
-    # ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
-    # color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
+    depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
+    depth_images_16 = torch.Tensor(np.load("depth_images_16.npy")).to(device)
+    depth_images_84 = torch.Tensor(np.load("depth_images_84.npy")).to(device)
+    surface_normals = torch.Tensor(np.load("surface_normals.npy")).to(device)
+    ray_origins = torch.Tensor(np.load("ray_origins.npy")).to(device)
+    ray_directions = torch.Tensor(np.load("ray_directions.npy")).to(device)
+    ray_cam_inds = torch.Tensor(np.load("ray_cam_inds.npy")).to(device)
+    color_images = torch.Tensor(np.load("color_images.npy")).to("cpu")
+    
     dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
     
-    os.chdir("..")
+    os.chdir(os.pardir)
+    os.chdir(os.pardir)
+    print(f"Current dir: {os.listdir(os.curdir)}")
     
     del depth_images_50
     del depth_images_16
@@ -729,10 +761,15 @@ def export_ssan(
     bounding_box_max = torch.tensor(bounding_box_max).to(device)
 
     remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
-    ##dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
+    dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
     remove_inf_and_nan(dataset)
 
+    ##adjust mesh construction coords
+    print(tsdf_surface.voxel_coords.shape)
+    tsdf_surface.voxel_coords = (tsdf_surface.voxel_coords.T -bounding_box_min).T
+    tsdf_surface.voxel_coords = (tsdf_surface.voxel_coords.T/(bounding_box_max-bounding_box_min)).T
+    print(tsdf_surface.voxel_coords.shape)
 
 
     ##split dataset into two equal randomised halfs, then carry forward one.
@@ -748,11 +785,11 @@ def export_ssan(
 
 
     ##profiler 
-    profiler = SummaryWriter()
+    profiler = SummaryWriter(log_dir=f"runs/{loss_weights}")
     ##batch_size number of images worth of rays randomly selected.
     ## batch_size * img_width * img_height 
     num_rays = int(batch_size) * int(cameras.cx.mean()) * int(cameras.cy.mean())
-    divisions = 10
+    divisions = 30
 
     # shuffle rays randomly
     dataset.shuffle_data()
@@ -768,6 +805,8 @@ def export_ssan(
                 dataset.depth_84[i : i + num_rays],
                 dataset.ray_origins[i : i + num_rays],
                 dataset.surface_normals[i:i+num_rays],
+                dataset.ray_directions[i:i + num_rays],
+                loss_weights,
                 profiler,
                 ##color_images=color_images[i : i + batch_size],
             )
@@ -791,6 +830,7 @@ def export_ssan(
 def remove_rays_outside_AABB(data: SSANDataset, AABB_min: torch.Tensor, AABB_max: torch.Tensor):
     greater_than_min = torch.where(data.depth_50 >= AABB_min,True,False)
     less_than_max = torch.where(data.depth_50 <= AABB_max,True,False)
+
 
     valid_datums = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
 
