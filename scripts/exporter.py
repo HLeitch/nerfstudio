@@ -706,8 +706,10 @@ class ExportMarchingTetTSDFMesh(Exporter):
     """Target number of faces for the mesh to texture."""
     loss_weights: Tuple[float,float,float,float] = (0.0001,0.00001,0.000001,0.00001)
     """DEBUG: Change the weights of the losses applied during training of the tsdf.\n surface, Normal Consist., Normal smooth., Normal orient."""
-    
-
+    batch_splits: int = 30
+    """DEBUG: number of times the rays are split before propergation to sdf. altering can help with tsdf problems"""
+    epochs: int = 3
+    """DEBUG: number of times each ray is propergated through"""
     def main(self) -> None:
         """Export mesh"""
 
@@ -731,7 +733,9 @@ class ExportMarchingTetTSDFMesh(Exporter):
             use_bounding_box=self.use_bounding_box,
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
-            loss_weights=self.loss_weights
+            loss_weights=self.loss_weights,
+            batch_splits= self.batch_splits,
+            epochs= self.epochs
         )
 
 

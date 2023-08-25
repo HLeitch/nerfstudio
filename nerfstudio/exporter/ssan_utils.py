@@ -236,7 +236,7 @@ class TSDFfromSSAN:
         #tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
         arr = np.linspace(0.1,-0.1,19)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
-        
+
         try:
             os.mkdir(f"{output_dir}")
         except:
@@ -260,7 +260,7 @@ class TSDFfromSSAN:
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
             
-            mcubes.export_obj(vertices,triangles,f"TEST_{x}.obj")
+            mcubes.export_obj(vertices,triangles,f"threshold_{x}.obj")
 
         ##return vertices,faces,normals
 
@@ -420,10 +420,10 @@ class TSDFfromSSAN:
                     # norm_smooth_loss +=smoothness_loss
 
 
-                    surface_loss_value *= 0.0001#loss_weights[0]
-                    normal_consistency_value *= 0.000001#loss_weights[1]
-                    smoothness_loss *= 0.0001#loss_weights[2]
-                    orientation_loss *= 0.00001#loss_weights[3]
+                    surface_loss_value *= loss_weights[0]
+                    normal_consistency_value *= loss_weights[1]
+                    smoothness_loss *= loss_weights[2]
+                    orientation_loss *= loss_weights[3]
 
                     tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss) + orientation_loss
                     
@@ -451,6 +451,7 @@ class TSDFfromSSAN:
                     
                     tot_loss.backward()
                     self.optimiser.step()
+                    
                     del mlp_prediction_surface
                     del mlp_prediction_inside
                     del mlp_prediction_outside
@@ -604,6 +605,8 @@ def export_ssan(
     bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
     bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     loss_weights: Tuple[float,float,float,float] = (0.0001,0.00001,0.000001,0.00001),
+    batch_splits: int = 30,
+    epochs: int = 3
 ):
     """Export a TSDF mesh from a pipeline.
 
@@ -707,11 +710,11 @@ def export_ssan(
     # color_images = torch.tensor(np.array(color_images), device=device)
     base_dir = os.curdir
     try:
-        os.mkdir(f"./ssan/testsphere")
+        os.mkdir(f"./ssan/teststatue")
     except:
         print("directory Exists")
     
-    os.chdir("./ssan/testsphere")
+    os.chdir("./ssan/teststatue")
 
     ##with open("/test_arrays/depth_images_50","wb") as f:
     # np.save("depth_images_50.npy",arr=np.array(depth_images_50.cpu()))
@@ -722,7 +725,7 @@ def export_ssan(
     # np.save("ray_directions.npy",arr=np.array(ray_directions.cpu()))
     # np.save("ray_cam_inds.npy",arr=np.array(ray_cam_inds.cpu()))
     # np.save("color_images.npy",arr=np.array(color_images.cpu()))
-    print(f"Arrays saved to {os.curdir}")
+    # print(f"Arrays saved to {os.curdir}")
 
 
     depth_images_50 = torch.Tensor(np.load("depth_images_50.npy")).to(device)
@@ -785,17 +788,17 @@ def export_ssan(
 
 
     ##profiler 
-    profiler = SummaryWriter(log_dir=f"runs/{loss_weights}")
+    profiler = SummaryWriter(log_dir=f"runs/epochtestStatue/epoch{epochs}_divisions{batch_splits}")
     ##batch_size number of images worth of rays randomly selected.
     ## batch_size * img_width * img_height 
     num_rays = int(batch_size) * int(cameras.cx.mean()) * int(cameras.cy.mean())
-    divisions = 30
+    divisions = batch_splits
 
     # shuffle rays randomly
     dataset.shuffle_data()
 
    ##Batches changed from original tsdf integration to accomodate 2d input
-    for e in range(3):
+    for e in range(epochs):
         print(f"### EPOCH {e}####\n################")
         for i in range(0, dataset.depth_50.shape[0], num_rays):
             tsdf_surface.integrate_tri_tsdf(
