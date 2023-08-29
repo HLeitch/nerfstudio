@@ -704,12 +704,14 @@ class ExportMarchingTetTSDFMesh(Exporter):
     """If using xatlas for unwrapping, the pixels per side of the texture image."""
     target_num_faces: Optional[int] = 50000
     """Target number of faces for the mesh to texture."""
-    loss_weights: Tuple[float,float,float,float] = (0.0001,0.00001,0.000001,0.00001)
+    loss_weights: Tuple[float,float,float,float] = (0.00001,0.000001,0.000001,0.000001)
     """DEBUG: Change the weights of the losses applied during training of the tsdf.\n surface, Normal Consist., Normal smooth., Normal orient."""
     batch_splits: int = 30
-    """DEBUG: number of times the rays are split before propergation to sdf. altering can help with tsdf problems"""
+    """DEBUG: number of times the rays are split before propagation to sdf. altering can help with tsdf problems"""
     epochs: int = 3
-    """DEBUG: number of times each ray is propergated through"""
+    """DEBUG: number of times each ray is propagated through"""
+    nerf_image_path: str= ""
+    """path to prerendered data"""
     def main(self) -> None:
         """Export mesh"""
 
@@ -735,7 +737,8 @@ class ExportMarchingTetTSDFMesh(Exporter):
             bounding_box_max=self.bounding_box_max,
             loss_weights=self.loss_weights,
             batch_splits= self.batch_splits,
-            epochs= self.epochs
+            epochs= self.epochs,
+            nerf_image_path=self.nerf_image_path
         )
 
 
