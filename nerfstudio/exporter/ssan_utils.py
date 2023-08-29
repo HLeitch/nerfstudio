@@ -26,11 +26,12 @@ import torch.utils.data as torch_data
 from mpl_toolkits import mplot3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from rich.console import Console
-from skimage import measure
+from skimage import measure as skmeasure
 from torch.utils.data import DataLoader, SubsetRandomSampler, dataset
 from torch.utils.tensorboard import SummaryWriter
 from torchtyping import TensorType
 
+import nerfstudio.exporter.marching_cubes_utils as mcUtils
 import nerfstudio.fields.nerfacto_field
 from nerfstudio.cameras.rays import Frustums, RaySamples
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
@@ -236,7 +237,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.05,-0.075,5)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.05,-0.075,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.01]
         try:
             os.mkdir(f"{output_dir}")
@@ -244,8 +245,11 @@ class TSDFfromSSAN:
             print("directory Exists")
         os.chdir(output_dir)
 
+        vertices,faces,normals = 0,0,0
+
         for x in arr:
-            vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
+            #vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
+            vertices,faces,normals = skmeasure.marching_cubes(tsdf_values_np, level=x,allow_degenerate=False)
 
             # adjust voxel size to x,z,y as above
             voxel_size = self.voxel_size.cpu() #* torch.tensor((0.5,1,0.5))
@@ -260,10 +264,10 @@ class TSDFfromSSAN:
             # f = lambda x,y,z: self.surface_mlp(torch.Tensor((x,y,z)))[0]
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
-            
-            mcubes.export_obj(vertices,triangles,f"threshold_{x}.obj")
+            faces = faces +1
+            mcUtils.save_obj(verts,faces,normals,output_dir,)
 
-        ##return vertices,faces,normals
+        return vertices,faces,normals
 
 
     # def get_mesh(self) -> Mesh:
