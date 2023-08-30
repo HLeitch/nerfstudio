@@ -237,8 +237,8 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.05,-0.075,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
-        ##arr = [-0.01]
+        arr = np.linspace(-0.06,-0.075,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        ##arr = [-0.06]
         try:
             os.mkdir(f"{output_dir}")
         except:
@@ -249,7 +249,7 @@ class TSDFfromSSAN:
 
         for x in arr:
             #vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
-            vertices,faces,normals = skmeasure.marching_cubes(tsdf_values_np, level=x,allow_degenerate=False)
+            vertices,faces,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
 
             # adjust voxel size to x,z,y as above
             voxel_size = self.voxel_size.cpu() #* torch.tensor((0.5,1,0.5))
@@ -259,13 +259,11 @@ class TSDFfromSSAN:
             ## move vertices back to world space
             vertices = self.origin.view(1, 3).cpu().numpy() + vertices * voxel_size.view(1, 3).cpu().numpy()
 
-
-
             # f = lambda x,y,z: self.surface_mlp(torch.Tensor((x,y,z)))[0]
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
             faces = faces +1
-            mcUtils.save_obj(verts,faces,normals,output_dir,)
+            mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
 
         return vertices,faces,normals
 
@@ -427,7 +425,7 @@ class TSDFfromSSAN:
 
                     surface_loss_value *= loss_weights[0]
                     normal_consistency_value *= loss_weights[1]
-                    smoothness_loss *= loss_weights[2]
+                    smoothness_loss *= 0#loss_weights[2]
                     orientation_loss *= loss_weights[3]
 
                     tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss) + orientation_loss
@@ -617,6 +615,7 @@ def export_ssan(
     batch_splits: int = 30,
     epochs: int = 3,
     nerf_image_path: str = "",
+    ray_limit: int = 77000000
 ):
     """Export a TSDF mesh from a pipeline.
 
@@ -698,11 +697,6 @@ def export_ssan(
     # camera per image supplied
     cameras = dataparser_outputs.cameras.to(device)
 
-    ## Select the first 150 to prevent memory issues
-    num_cams = min(cameras.shape[0],150)
-
-    cameras = cameras[0:num_cams]
-
     depth_images_50 = torch.tensor([0])
     depth_images_16 = torch.tensor([0])
     depth_images_84 = torch.tensor([0])
@@ -779,7 +773,7 @@ def export_ssan(
 
         
     dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
-    
+    dataset.trim_data(ray_limit)
     print(f"Current dir: {os.listdir(os.curdir)}")
     
     del depth_images_50
@@ -859,10 +853,12 @@ def export_ssan(
     CONSOLE.print("Computing Mesh")
 
 
-    mesh_surface = tsdf_surface.get_mesh(output_dir)
+    verts,faces,norms = tsdf_surface.get_mesh(output_dir)
+
+    ##profiler.add_mesh("Mesh: ",vertices=torch.tensor(verts).unsqueeze(0),faces=torch.tensor(faces).unsqueeze(0))
 
     print(f"surface Values: {tsdf_surface.values.shape}")
-
+    profiler.close()
     return 0
 
     tsdf_surface.export_mesh(mesh_surface, filename=str(output_dir / "ssan_mesh_surface.ply"))
@@ -1012,6 +1008,24 @@ class SSANDataset(dataset.Dataset):
         self.ray_cam_inds = self.ray_cam_inds[rand_index]
 
         print("Dataset Shuffled")
+    
+    ##Shuffles and reduces dataset to the desired amount of rays
+    def trim_data(self, ray_limit: int):
+        self.shuffle_data()
+        if(self.depth_50.shape[0] > ray_limit):
+
+            self.depth_50 = self.depth_50[:ray_limit]
+            self.depth_16 = self.depth_16[:ray_limit]
+            self.depth_84 = self.depth_84[:ray_limit]
+            self.surface_normals = self.surface_normals[:ray_limit]
+            self.ray_origins = self.ray_origins[:ray_limit]
+            self.ray_directions = self.ray_directions[:ray_limit]
+            self.ray_cam_inds = self.ray_cam_inds[:ray_limit]
+        else:
+            print("Fewer rays than limit, all rays used.")
+
+
+
 
     def __len__(self):
         return len(self.depth_50)

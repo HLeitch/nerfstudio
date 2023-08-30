@@ -712,6 +712,8 @@ class ExportMarchingTetTSDFMesh(Exporter):
     """DEBUG: number of times each ray is propagated through"""
     nerf_image_path: str= ""
     """path to prerendered data"""
+    ray_limit: int = 77000000
+    """Maximum amount of rays held in memory. Defaults to 77000000 which almost fills a 3090TI."""
     def main(self) -> None:
         """Export mesh"""
 
