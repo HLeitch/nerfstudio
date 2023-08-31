@@ -237,7 +237,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.06,-0.075,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.05,-0.15,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.06]
         try:
             os.mkdir(f"{output_dir}")
@@ -425,7 +425,7 @@ class TSDFfromSSAN:
 
                     surface_loss_value *= loss_weights[0]
                     normal_consistency_value *= loss_weights[1]
-                    smoothness_loss *= 0#loss_weights[2]
+                    smoothness_loss *= loss_weights[2]
                     orientation_loss *= loss_weights[3]
 
                     tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss) + orientation_loss
