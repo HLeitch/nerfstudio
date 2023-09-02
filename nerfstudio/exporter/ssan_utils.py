@@ -237,7 +237,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.05,-0.15,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.06,-0.085,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.06]
         try:
             os.mkdir(f"{output_dir}")
@@ -249,7 +249,11 @@ class TSDFfromSSAN:
 
         for x in arr:
             #vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
-            vertices,faces,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
+
+            try:
+                vertices,faces,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
+            except:
+                print(f"x is not able to thresholded the marching cubes")
 
             # adjust voxel size to x,z,y as above
             voxel_size = self.voxel_size.cpu() #* torch.tensor((0.5,1,0.5))
@@ -263,7 +267,10 @@ class TSDFfromSSAN:
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
             faces = faces +1
-            mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
+            try:
+                mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
+            except:
+                print(f"x is not able to thresholded the marching cubes")
 
         return vertices,faces,normals
 
@@ -407,7 +414,8 @@ class TSDFfromSSAN:
                     if torch.isnan(mlp_prediction_surface).any():
                         print("mloutputs contain nan")
 
-                    surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
+                    #surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
+                    surface_loss_value = (self.surface_surface_loss(mlp_prediction_surface) + self.inside_loss(mlp_prediction_inside)+ self.outside_loss(mlp_prediction_outside))
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
                     smoothness_loss = self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
@@ -562,17 +570,31 @@ class TSDFfromSSAN:
 
         return normal_regularity**2
     
+    def outside_loss(self,output_prediction_outside: torch.Tensor):
+        surface_outside = output_prediction_outside[:,0]
+        surface_loss_value = (surface_outside - (torch.ones_like(surface_outside)*0.1))**2
+        return surface_loss_value
+    
+    def inside_loss(self,output_prediction_inside: torch.Tensor):
+        surface_inside = output_prediction_inside[:,0]
+        surface_loss_value = (surface_inside + (torch.ones_like(surface_inside)*0.1))**2
+        return surface_loss_value
+    def surface_surface_loss(self,output_prediction_surface: torch.Tensor):
+        surface = output_prediction_surface[:,0]
+        surface_loss_value = surface **2
+        return surface_loss_value
+
     def surface_loss(self,output_prediction_surface: torch.Tensor,
                      output_prediction_outside: torch.Tensor,
                      output_prediction_inside: torch.Tensor,
                      output_prediction_origins: torch.Tensor):
         ##divide back into 16,50,84 densities
         ##output_divider = int(output_prediction.shape[0]/3)
-                                
         surface_mid = output_prediction_surface[:,0]
         surface_outside = output_prediction_outside[:,0]
         surface_inside = output_prediction_inside[:,0]
         origins = output_prediction_origins[:,0]
+        
         ##print(f"###########################\nsurface = {outputs_surface.shape}, outside = {outputs_outside.shape}, inside = {outputs_inside.shape}")
         ##print(f"surface values: {output_prediction[:,0]}")
 
@@ -582,12 +604,13 @@ class TSDFfromSSAN:
         surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)*0.1))**2) + 
                             surface_mid**2 + 
                             ((surface_inside+(torch.ones_like(surface_outside)*0.1))**2))
-        
+
         ##ray origins are always outside the surface value
-        ray_origin_loss = ((origins - (torch.ones_like(origins)*0.1))**2)
+        #ray_origin_loss = ((origins - (torch.ones_like(origins)*0.1))**2)
+        
+        surface_loss_value = torch.tensor(surface_loss_value,dtype=torch.float32)
 
-
-        if torch.isnan(surface_loss_value).any():
+        if not torch.isfinite(surface_loss_value).any():
             print("help")
 
         ##print(f"Individual surface Loss: {surface_loss_value}")
