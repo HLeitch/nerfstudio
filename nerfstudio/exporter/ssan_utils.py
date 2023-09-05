@@ -40,6 +40,7 @@ from nerfstudio.exporter.exporter_utils import (
     render_trajectory,
     render_trajectory_tri_tsdf,
 )
+from nerfstudio.exporter.object_renderer import render_mesh
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
@@ -237,7 +238,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.06,-0.085,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(0.02,-0.02,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.06]
         try:
             os.mkdir(f"{output_dir}")
@@ -245,13 +246,12 @@ class TSDFfromSSAN:
             print("directory Exists")
         os.chdir(output_dir)
 
-        vertices,faces,normals = 0,0,0
+        vertices,faces,normals,triangles = 0,0,0,0
 
         for x in arr:
-            #vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
-
             try:
-                vertices,faces,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
+                ##vertices,faces,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
+                vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
             except:
                 print(f"x is not able to thresholded the marching cubes")
 
@@ -266,11 +266,13 @@ class TSDFfromSSAN:
             # f = lambda x,y,z: self.surface_mlp(torch.Tensor((x,y,z)))[0]
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
-            faces = faces +1
-            try:
-                mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
-            except:
-                print(f"x is not able to thresholded the marching cubes")
+            ##faces = faces +1
+            ##try:
+                ##mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
+            mcubes.export_obj(vertices,triangles,f"threshold_{x}.obj")
+            render_mesh(vertices,triangles,torch.tensor(0),output_dir)
+            ##except:
+                #print(f"x is not able to thresholded the marching cubes")
 
         return vertices,faces,normals
 

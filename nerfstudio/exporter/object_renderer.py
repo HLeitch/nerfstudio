@@ -1,19 +1,29 @@
 import numpy as np
-from matplotlib import pyplot as plt
+
+##import open3d as o3d
+import open3d
+import open3d.visualization as vis
 import pymeshlab
-
 import torch
+from matplotlib import pyplot as plt
 
 
-
-def render_mesh(verts: torch.Tensor,faces: torch.Tensor,norms: torch.Tensor,path:str):
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.plot_surface(verts,faces)
-    ax.set_aspect('equal')
-    plt.savefig(f"{path}/mesh_render.png")
+def render_mesh(verts ,triangles ,norms,path:str):
     
-    pymeshlab.
+    mesh = open3d.geometry.TriangleMesh()
+    print(verts.shape)
+    verts = open3d.utility.Vector3dVector(verts)
+    triangles = open3d.utility.Vector3iVector(triangles)
+    mesh = open3d.geometry.TriangleMesh(verts,triangles)
+    mesh.compute_vertex_normals()
+    v = vis.Visualizer()
+    v.create_window()#window_name = "render",visable = True)
+    v.add_geometry(mesh)
+    img = v.capture_screen_float_buffer(do_render=False)
 
-if __name__ == "__main__":
+    open3d.io.write_image(f"render.png",img,-1)
+    ##plt.imshow(np.asanyarray(img))
+
+    open3d.visualization.draw(mesh,f"{path}",1920,1080)
+# if __name__ == "__main__":
     
