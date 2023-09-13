@@ -196,7 +196,7 @@ class TSDFfromSSAN:
         return TSDFfromSSAN(voxel_coords, values, weights,normal_values,normal_weights, surface_mlp,optimiser, colors, voxel_size, origin)
     
     @torch.no_grad()
-    def get_mesh(self, output_dir: Path) -> Mesh:
+    def get_mesh(self, output_dir: Path,profiler:SummaryWriter) -> Mesh:
         """Extracts a mesh using marching cubes."""
         #device = self.values.device
         # sample_density = 256
@@ -238,8 +238,8 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(0.02,-0.02,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
-        ##arr = [-0.06]
+        arr = np.linspace(-0.0,-0.1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        #arr = [-0.075]
         try:
             os.mkdir(f"{output_dir}")
         except:
@@ -270,7 +270,7 @@ class TSDFfromSSAN:
             ##try:
                 ##mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
             mcubes.export_obj(vertices,triangles,f"threshold_{x}.obj")
-            render_mesh(vertices,triangles,torch.tensor(0),output_dir)
+            render_mesh(vertices,triangles,torch.tensor(0),f"threshold_{x}_render",profiler=profiler)
             ##except:
                 #print(f"x is not able to thresholded the marching cubes")
 
@@ -796,10 +796,15 @@ def export_ssan(
         os.chdir(os.pardir)
         os.chdir(os.pardir)
 
+    for x in np.linspace(0,60,5,dtype=int):
+        profiler.add_image("Data/50 Depth Image/:",depth_images_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/16 Depth Image/:",depth_images_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/84 Depth Image/:",depth_images_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/Normals Image/:",surface_normals[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/Ray Directions/: ",ray_directions[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/Colour Image/: ",color_images[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         
     dataset = SSANDataset(depth_images_50, depth_images_16, depth_images_84, surface_normals, ray_origins,ray_directions,ray_cam_inds)
-    dataset.trim_data(ray_limit)
-    print(f"Current dir: {os.listdir(os.curdir)}")
     
     del depth_images_50
     del depth_images_16
@@ -808,15 +813,17 @@ def export_ssan(
     del ray_origins
     del ray_directions
     del ray_cam_inds
-
-
-
-    print(f"{dataset.depth_50.shape}")
-
+    
     dataset.depth_to_point()
+    for x in np.linspace(0,60,5,dtype=int):
+        profiler.add_image("Data/50 Depth Point/:",dataset.depth_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/16 Depth Point/:",dataset.depth_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/84 Depth Point/:",dataset.depth_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        
+
 
     dataset.to_2d_array()
-
+    
     ## Remove rays which terminate outside the bounding box
     bounding_box_min = torch.tensor(bounding_box_min).to(device)
     bounding_box_max = torch.tensor(bounding_box_max).to(device)
@@ -824,7 +831,18 @@ def export_ssan(
     remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
     dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
+    print(f"Current dir: {os.listdir(os.curdir)}")
+    
+
+
+
+    print(f"{dataset.depth_50.shape}")
+
+
+
+
     remove_inf_and_nan(dataset)
+    dataset.trim_data(ray_limit)
 
     ##adjust mesh construction coords
     print(tsdf_surface.voxel_coords.shape)
@@ -878,7 +896,7 @@ def export_ssan(
     CONSOLE.print("Computing Mesh")
 
 
-    verts,faces,norms = tsdf_surface.get_mesh(output_dir)
+    verts,faces,norms = tsdf_surface.get_mesh(output_dir,profiler=profiler)
 
     ##profiler.add_mesh("Mesh: ",vertices=torch.tensor(verts).unsqueeze(0),faces=torch.tensor(faces).unsqueeze(0))
 

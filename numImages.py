@@ -56,7 +56,7 @@ if __name__ == "__main__":
         os.curdir = directory
         print(f"Training Start: {directory}")
         os.system(
-            f"ns-train {method} --data {directory} --output-dir .\\ --timestamp {timestamp} --viewer.quit-on-train-completion True --trainer.max-num-iterations 10000 --vis tensorboard"
+            f"ns-train {method} --data {directory} --output-dir .\\ --timestamp {timestamp} --viewer.quit-on-train-completion True  --vis tensorboard"
         )
 
         print("Training Finished")

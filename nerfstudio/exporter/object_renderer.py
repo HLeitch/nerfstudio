@@ -1,14 +1,18 @@
+import io
+
 import numpy as np
 
 ##import open3d as o3d
 import open3d
 import open3d.visualization as vis
 import pymeshlab
+import tensorboard as tb
 import torch
 from matplotlib import pyplot as plt
+from PIL import Image
 
 
-def render_mesh(verts ,triangles ,norms,path:str):
+def render_mesh(verts ,triangles ,norms,filename:str, profiler):
     
     mesh = open3d.geometry.TriangleMesh()
     print(verts.shape)
@@ -17,13 +21,14 @@ def render_mesh(verts ,triangles ,norms,path:str):
     mesh = open3d.geometry.TriangleMesh(verts,triangles)
     mesh.compute_vertex_normals()
     v = vis.Visualizer()
-    v.create_window()#window_name = "render",visable = True)
+    v.create_window(width=1920,height=1080)#window_name = "render",visable = True)
     v.add_geometry(mesh)
-    img = v.capture_screen_float_buffer(do_render=False)
+    v.capture_screen_image(f"{filename}.png",do_render=True)
+    v.destroy_window()
 
-    open3d.io.write_image(f"render.png",img,-1)
-    ##plt.imshow(np.asanyarray(img))
+    img = Image.open(f"{filename}.png")
+    img = np.asarray(img).T
+    profiler.add_image(f"MeshRender/{filename}",img)
 
-    open3d.visualization.draw(mesh,f"{path}",1920,1080)
 # if __name__ == "__main__":
     
