@@ -236,9 +236,9 @@ class TSDFfromSSAN:
         tsdf_values_np = self.values.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        ##tsdf_values_np = 1 - np.abs(tsdf_values_np)
+        tsdf_values_np = 1 - np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.0,-0.1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.0,-1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         #arr = [-0.075]
         try:
             os.mkdir(f"{output_dir}")
@@ -583,7 +583,7 @@ class TSDFfromSSAN:
         return surface_loss_value
     def surface_surface_loss(self,output_prediction_surface: torch.Tensor):
         surface = output_prediction_surface[:,0]
-        surface_loss_value = surface **2
+        surface_loss_value = (surface) **2
         return surface_loss_value
 
     def surface_loss(self,output_prediction_surface: torch.Tensor,
@@ -820,7 +820,7 @@ def export_ssan(
         profiler.add_image("Data/16 Depth Point/:",dataset.depth_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/84 Depth Point/:",dataset.depth_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         
-
+    
 
     dataset.to_2d_array()
     
@@ -1007,7 +1007,7 @@ class SSANDataset(dataset.Dataset):
     ### must be used after converting depth vals to 3d points
     def to_aabb_bounding_box(self,bounding_box_min,bounding_box_max):
         if self.depth_50.shape[-1] != bounding_box_min.shape[0]:
-            raise ValueError("depth_50 not the right shape. Try using depth_to_point before.")
+            raise ValueError("depth_50 not the right shape. make sure you are using depth_to_point before.")
 
         self.depth_50 -= bounding_box_min
         self.depth_50 /= (bounding_box_max-bounding_box_min)
