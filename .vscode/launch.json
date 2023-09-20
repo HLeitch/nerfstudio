@@ -119,14 +119,14 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\data\\Unreal_Sphere_hq\\nerfacto\\2023-09-11_165133/config.yml",
-        "--output-dir=exports/tri-tsdf/Quality_test",
+        "--output-dir=exports/tri-tsdf/depth_test/sphere-40-60-nonormloss",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.25", "-0.09", "-0.15",
         "--bounding-box-max", "0.05", "0.2","0.15",
-        //"--nerf_image_path=ssan/unrealtestsphere",
-        "--loss_weights", "0.01", "0.001", "0.001", "0.0000",
-        "--epochs", "25",
-        "--batch_splits", "50"
+        //"--nerf_image_path=ssan/lastrender",
+        "--loss_weights", "0.001", "0.000", "0.000", "0.0000",
+        "--epochs", "16",
+        "--batch_splits", "40"
 
       ]
 
@@ -142,14 +142,14 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\data\\unreal150\\nerfacto\\2023-09-18_120301/config.yml",
-        "--output-dir=exports/tri-tsdf/viking",
+        "--output-dir=exports/tri-tsdf/sphere-40-60-nonormloss",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.12", "-0.3", "-0.1",
         "--bounding-box-max", "0.08", "-0.1","0.1",
         //"--nerf_image_path=ssan/unrealtestsphere",
-        "--loss_weights", "0.01", "0.001", "0.001", "0.0000",
-        "--epochs", "25",
-        "--batch_splits", "50"
+        "--loss_weights", "0.01", "0.00", "0.00", "0.0000",
+        "--epochs", "16",
+        "--batch_splits", "30"
 
       ]
 
@@ -189,14 +189,14 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-08-15_135545/config.yml",
-        "--output-dir=exports/tri-tsdf/epsilon_test",
+        "--output-dir=exports/tri-tsdf/depth_viewing/ignatius",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.15", "-0.2", "-0.35",
         "--bounding-box-max", "0.15", "0.2","0.35",
         "--loss_weights", "0.001", "0.0001", "0.0001", "0.00001",
         "--epoch", "16",
-        "--batch_splits",  "40"
-        //"--nerf_image_path=ssan/teststatue",
+        "--batch_splits",  "30",
+        "--nerf_image_path=ssan/lastrender",
 
       ]
 
@@ -211,7 +211,7 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs/data/nerf-synthetic/lego/nerfacto/2023-03-24_124319/config.yml",
-        "--output-dir=exports/tri-tsdf/Quality_test",
+        "--output-dir=exports/tri-tsdf/depth_test/lego",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.3", "-0.4", "-0.75",
         "--bounding-box-max", "0.3", "0.19","-0.25",

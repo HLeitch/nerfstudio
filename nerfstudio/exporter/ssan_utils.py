@@ -236,9 +236,9 @@ class TSDFfromSSAN:
         tsdf_values_np = self.values.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        tsdf_values_np = 1 - np.abs(tsdf_values_np)
+        ##tsdf_values_np = np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.0,-1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.5,0.5,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         #arr = [-0.075]
         try:
             os.mkdir(f"{output_dir}")
@@ -583,7 +583,7 @@ class TSDFfromSSAN:
         return surface_loss_value
     def surface_surface_loss(self,output_prediction_surface: torch.Tensor):
         surface = output_prediction_surface[:,0]
-        surface_loss_value = (surface) **2
+        surface_loss_value = surface**2
         return surface_loss_value
 
     def surface_loss(self,output_prediction_surface: torch.Tensor,
@@ -819,14 +819,16 @@ def export_ssan(
         profiler.add_image("Data/50 Depth Point/:",dataset.depth_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/16 Depth Point/:",dataset.depth_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/84 Depth Point/:",dataset.depth_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
-        
-    
+
+    ## Remove rays which terminate outside the bounding box
+    bounding_box_min = torch.tensor(bounding_box_min).to(device)
+    bounding_box_max = torch.tensor(bounding_box_max).to(device) 
+
+    dataset.display_aabb_depths(bounding_box_min,bounding_box_max,profiler)
 
     dataset.to_2d_array()
     
-    ## Remove rays which terminate outside the bounding box
-    bounding_box_min = torch.tensor(bounding_box_min).to(device)
-    bounding_box_max = torch.tensor(bounding_box_max).to(device)
+
 
     remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
     dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
@@ -951,7 +953,7 @@ def remove_inf_and_nan(data: SSANDataset):
 
     ### how many 3d vectors are there?
     finite_length = is_finite.sum()/3
-    valid_datums = torch.any((torch.bitwise_and(is_finite,is_inside)),dim=1)
+    valid_datums = torch.all((torch.bitwise_and(is_finite,is_inside)),dim=1)
     
     print(f"Rays used {data.depth_16.shape}/{data.depth_50[valid_datums].shape}")
     _d50 = data.depth_50[valid_datums]
@@ -1067,7 +1069,15 @@ class SSANDataset(dataset.Dataset):
         else:
             print("Fewer rays than limit, all rays used.")
 
+    ##Debug function. Write depths of rays within aabb to tensorboard
+    def display_aabb_depths(self,bounding_box_min: torch.Tensor, bounding_box_max: torch.Tensor, profiler: SummaryWriter):
+        greater_than_min = torch.where(self.depth_50[:,:,:]>=bounding_box_min,True,False)
+        less_than_max = torch.where(self.depth_50[:,:,:] <= bounding_box_max,True,False)
 
+        valid_datums = torch.all((torch.bitwise_and(greater_than_min,less_than_max)),dim=3)
+        bounded_data = torch.where(valid_datums[:,:,:,None],self.depth_50,False)
+        for x in np.linspace(0,60,5,dtype=int):
+            profiler.add_image("Bounded Depth/50/",bounded_data[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
 
 
     def __len__(self):
