@@ -236,10 +236,10 @@ class TSDFfromSSAN:
         tsdf_values_np = self.values.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        ##tsdf_values_np = np.abs(tsdf_values_np)
+        ##tsdf_values_np = 1-np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.5,0.5,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
-        #arr = [-0.075]
+        arr = np.linspace(-0.1,0.1,15)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        ##arr = [-0.0,0.005,-0.005]
         try:
             os.mkdir(f"{output_dir}")
         except:
@@ -247,10 +247,10 @@ class TSDFfromSSAN:
         os.chdir(output_dir)
 
         vertices,faces,normals,triangles = 0,0,0,0
-
         for x in arr:
             try:
                 ##vertices,faces,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
+                
                 vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
             except:
                 print(f"x is not able to thresholded the marching cubes")
@@ -416,8 +416,18 @@ class TSDFfromSSAN:
                     if torch.isnan(mlp_prediction_surface).any():
                         print("mloutputs contain nan")
 
-                    #surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
-                    surface_loss_value = (self.surface_surface_loss(mlp_prediction_surface) + self.inside_loss(mlp_prediction_inside)+ self.outside_loss(mlp_prediction_outside))
+                    surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
+                    # mid_surface_loss = self.surface_surface_loss(mlp_prediction_surface) 
+                    # inside_surface_loss = self.inside_loss(mlp_prediction_inside)
+                    # outside_surface_loss = self.outside_loss(mlp_prediction_outside)
+                    # profiler.add_scalar("Loss/Mid SurfaceLoss",mid_surface_loss.sum())
+                    # profiler.add_scalar("Loss/Inside SurfaceLoss",inside_surface_loss.sum())
+                    # profiler.add_scalar("Loss/Outside SurfaceLoss",outside_surface_loss.sum())
+
+
+
+                    # surface_loss_value = (mid_surface_loss+ inside_surface_loss + outside_surface_loss)
+                    
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
                     smoothness_loss = self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
