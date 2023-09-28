@@ -238,7 +238,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = 1-np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.1,0.12,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(0.1,-0.1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.0,0.005,-0.005]
         try:
             os.mkdir(f"{output_dir}")
@@ -420,13 +420,13 @@ class TSDFfromSSAN:
                     mid_surface_loss = self.surface_surface_loss(mlp_prediction_surface) 
                     inside_surface_loss = self.inside_loss(mlp_prediction_inside)
                     outside_surface_loss = self.outside_loss(mlp_prediction_outside)
-                    profiler.add_scalar("Loss/Mid SurfaceLoss",mid_surface_loss.sum())
-                    profiler.add_scalar("Loss/Inside SurfaceLoss",inside_surface_loss.sum())
-                    profiler.add_scalar("Loss/Outside SurfaceLoss",outside_surface_loss.sum())
+                    profiler.add_scalar("Loss/Mid SurfaceLoss",mid_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/Inside SurfaceLoss",inside_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/Outside SurfaceLoss",outside_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
 
 
 
-                    surface_loss_value = ((10*mid_surface_loss)+ inside_surface_loss + outside_surface_loss)
+                    surface_loss_value = ((mid_surface_loss)+ inside_surface_loss + outside_surface_loss)
                     
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
@@ -1048,7 +1048,7 @@ class SSANDataset(dataset.Dataset):
         self.depth_84 = torch.reshape(self.depth_84,[param_shape[1]*param_shape[0]*param_shape[2],self.depth_84.shape[3]])
         
         self.surface_normals = torch.reshape(self.surface_normals,[param_shape[1]*param_shape[0]*param_shape[2],self.surface_normals.shape[3]])
-        ##self.surface_normals = safe_normalize(self.surface_normals)
+        self.surface_normals = safe_normalize(self.surface_normals)
         
         self.ray_origins = torch.reshape(self.ray_origins,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_origins.shape[3]])
         self.ray_directions = torch.reshape(self.ray_directions,[param_shape[1]*param_shape[0]*param_shape[2],self.ray_directions.shape[3]])

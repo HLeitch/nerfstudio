@@ -97,14 +97,14 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\test-sphere\\nerfacto\\2023-04-27_164800/config.yml",
-        "--output-dir=exports/tri-tsdf/imbalencedSurface/sphere-midx10_smallerbatch",
+        "--output-dir=exports/tri-tsdf/imbalencedSurface/sphere-whoknows",
         "--use-bounding-box=True",
         "--bounding-box-min", "0.004000000000000031", "-0.25200000000000006", "-0.11099999999999997",
         "--bounding-box-max", "0.30400000000000005", "0.04799999999999993","0.189",
-        "--nerf_image_path=ssan/lastrender",
+        //"--nerf_image_path=ssan/lastrender",
         "--loss_weights", "0.001", "0.0001", "0.0001", "0.0001",
-        "--epochs", "90",
-        "--batch_splits","10"
+        "--epochs", "25",
+        "--batch_splits","30"
 
       ]
 
@@ -142,13 +142,13 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\data\\unreal150\\nerfacto\\2023-09-18_120301/config.yml",
-        "--output-dir=exports/tri-tsdf/ImprovedBB/vikingSphere",
+        "--output-dir=exports/tri-tsdf/imbalencedSurface/viking-ssan+1_inside95",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.12", "-0.3", "-0.1",
         "--bounding-box-max", "0.08", "-0.1","0.1",
-        //"--nerf_image_path=ssan/unrealtestsphere",
+        "--nerf_image_path=ssan/lastrender",
         "--loss_weights", "0.01", "0.001", "0.001", "0.00001",
-        "--epochs", "16",
+        "--epochs", "54",
         "--batch_splits", "30"
 
       ]
