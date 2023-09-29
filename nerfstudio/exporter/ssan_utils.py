@@ -267,12 +267,12 @@ class TSDFfromSSAN:
 
             # vertices, triangles = mcubes.marching_cubes_func((-2,-2,-2),(2,2,2),sample_density,sample_density,sample_density,f,0)
             ##faces = faces +1
-            # try:
+            try:
             #     mcUtils.save_obj(vertices,normals,faces,output_dir='.\\',file_name=f"threshold_{x}.obj")
-            mcubes.export_obj(vertices,faces,f"threshold_{x}.obj")
-            render_mesh(vertices,faces,torch.tensor(0),f"threshold_{x}_render",profiler=profiler)
-            # except:
-            #     print(f"x is not able to thresholded the marching cubes")
+                mcubes.export_obj(vertices,faces,f"threshold_{x}.obj")
+                render_mesh(vertices,faces,torch.tensor(0),f"threshold_{x}_render",profiler=profiler)
+            except:
+                print(f"x is not able to thresholded the marching cube.")
 
         return vertices,faces,normals
 
@@ -925,8 +925,7 @@ def remove_rays_outside_AABB(data: SSANDataset, AABB_min: torch.Tensor, AABB_max
     greater_than_min = torch.where(data.depth_50 >= AABB_min,True,False)
     less_than_max = torch.where(data.depth_50 <= AABB_max,True,False)
 
-
-    valid_datums = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
+    valid_datums = torch.all((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
 
     _d50 = data.depth_50[valid_datums]
     data.depth_50 = _d50

@@ -97,7 +97,7 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\test-sphere\\nerfacto\\2023-04-27_164800/config.yml",
-        "--output-dir=exports/tri-tsdf/imbalencedSurface/sphere-whoknows",
+        "--output-dir=exports/tri-tsdf/FindingWhatWorked/sphere-largerthreshold",
         "--use-bounding-box=True",
         "--bounding-box-min", "0.004000000000000031", "-0.25200000000000006", "-0.11099999999999997",
         "--bounding-box-max", "0.30400000000000005", "0.04799999999999993","0.189",
@@ -189,7 +189,7 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-08-15_135545/config.yml",
-        "--output-dir=exports/tri-tsdf/imbalencedSurface/ignatius-midx10_20ep50",
+        "--output-dir=exports/tri-tsdf/FindingWhatWorked/ignatius-commit0b8d95",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.15", "-0.2", "-0.35",
         "--bounding-box-max", "0.15", "0.2","0.35",
