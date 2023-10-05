@@ -236,9 +236,9 @@ class TSDFfromSSAN:
         tsdf_values_np = self.values.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        ##tsdf_values_np = 1-np.abs(tsdf_values_np)
+        tsdf_values_np = 1-np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(0.1,-0.1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(0.5,1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.0,0.005,-0.005]
         try:
             os.mkdir(f"{output_dir}")

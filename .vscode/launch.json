@@ -97,12 +97,12 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs\\test-sphere\\nerfacto\\2023-04-27_164800/config.yml",
-        "--output-dir=exports/tri-tsdf/FindingWhatWorked/sphere-largerthreshold",
+        "--output-dir=exports/tri-tsdf/FindingWhatWorked/sphere-smallthresh",
         "--use-bounding-box=True",
         "--bounding-box-min", "0.004000000000000031", "-0.25200000000000006", "-0.11099999999999997",
         "--bounding-box-max", "0.30400000000000005", "0.04799999999999993","0.189",
         //"--nerf_image_path=ssan/lastrender",
-        "--loss_weights", "0.001", "0.0001", "0.0001", "0.0001",
+        "--loss_weights", "0.01", "0.0001", "0.0001", "0.0001",
         "--epochs", "25",
         "--batch_splits","30"
 
@@ -189,14 +189,14 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-08-15_135545/config.yml",
-        "--output-dir=exports/tri-tsdf/FindingWhatWorked/ignatius-commit0b8d95",
+        "--output-dir=exports/tri-tsdf/FindingWhatWorked/ignatius-normalresAndrender_absskin",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.15", "-0.2", "-0.35",
         "--bounding-box-max", "0.15", "0.2","0.35",
         "--loss_weights", "0.001", "0.000001", "0.0000001", "0.0000001",
         "--epoch", "20",
         "--batch_splits",  "50",
-        //"--nerf_image_path=ssan/lastrender",
+        "--nerf_image_path=ssan/lastrender",
         //"--resolution", "256","256","256"
 
       ]
