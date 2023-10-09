@@ -233,12 +233,26 @@ class TSDFfromSSAN:
         # ##surface_value = surface_value.reshape(sample_density,sample_density,sample_density)
         # surface_value = torch.squeeze(surface_value)
         # # run marching cubes on CPU
+
         tsdf_values_np = self.values.cpu()
         tsdf_values_np = np.array(tsdf_values_np).astype(dtype=float)
 
-        tsdf_values_np = 1-np.abs(tsdf_values_np)
+        alpha = torch.where((self.values)<-0.1,1,0)
+        ##tsdf_values_np = 1-tsdf_values_np
+        fig = plt.figure()
+        ax = fig.add_subplot(111,projection="3d")
+
+        ax.scatter(self.voxel_coords[0].cpu(),self.voxel_coords[1].cpu(),self.voxel_coords[2].cpu(),s=(alpha.cpu()/100),alpha=alpha.cpu())
+
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Y Label')
+        ax.set_zlabel('Z Label')
+
+        plt.show()
+
+
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(0.5,1,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(0.0,0.3,10)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         ##arr = [-0.0,0.005,-0.005]
         try:
             os.mkdir(f"{output_dir}")
@@ -426,7 +440,7 @@ class TSDFfromSSAN:
 
 
 
-                    surface_loss_value = ((mid_surface_loss)+ inside_surface_loss + outside_surface_loss)
+                    surface_loss_value = ((mid_surface_loss)+ (inside_surface_loss) + (outside_surface_loss))
                     
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
@@ -584,12 +598,14 @@ class TSDFfromSSAN:
     
     def outside_loss(self,output_prediction_outside: torch.Tensor):
         surface_outside = output_prediction_outside[:,0]
-        surface_loss_value = (surface_outside - (torch.ones_like(surface_outside)*0.1))**2
+        surface_loss_value = surface_outside - (torch.ones_like(surface_outside)*1)
+        surface_loss_value= surface_loss_value**2
         return surface_loss_value
     
     def inside_loss(self,output_prediction_inside: torch.Tensor):
         surface_inside = output_prediction_inside[:,0]
-        surface_loss_value = (surface_inside + (torch.ones_like(surface_inside)*0.1))**2
+        surface_loss_value = surface_inside + (torch.ones_like(surface_inside)*1)
+        surface_loss_value= surface_loss_value**2
         return surface_loss_value
     def surface_surface_loss(self,output_prediction_surface: torch.Tensor):
         surface = output_prediction_surface[:,0]
