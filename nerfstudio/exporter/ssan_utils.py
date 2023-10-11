@@ -202,6 +202,8 @@ class TSDFfromSSAN:
         #device = self.values.device
         # sample_density = 256
         ##X,Y,Z = np.linspace(-1,1,200)
+
+        ## axis mirrored to correct output
         X = np.linspace(0,1,self.voxel_coords.shape[1])
         Y = np.linspace(0,1,self.voxel_coords.shape[1])
         Z = np.linspace(0,1,self.voxel_coords.shape[1])

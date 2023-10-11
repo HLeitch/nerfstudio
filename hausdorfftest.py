@@ -1,18 +1,40 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Oct 10 13:24:49 2023
-
-@author: hleit
-"""
 
 import os as os
 import point_cloud_utils as pcu
 import numpy as np
 import torch as torch
+import matplotlib.pyplot as plt
 
 # Generate two random point sets
-a = pcu.load_mesh_v("./data/tandt/Ignatius/ignatius_base.obj")
-b = pcu.load_mesh_v("./data/tandt/Ignatius/Ignatius_x_rot.obj")
+a = pcu.load_mesh_v("./data/tandt/Ignatius/ignatius_x_rot.obj")
+b = pcu.load_mesh_v("./data/tandt/Ignatius/Ignatius_z_rot.obj")
+
+fig = plt.figure()
+ax = fig.add_subplot(111,projection="3d")
+
+ax.scatter(a[:,0],a[:,1],a[:,2],marker=".")
+#ax.scatter(b[0],b[1],b[2],marker="o")
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
+
+
+plt.draw()
+plt.close()
+
+
+# %%
+# Moving both sets of points to the origin.
+avg_a = np.mean(a,0)
+avg_b = np.mean(b,0)
+
+print(f"{avg_a}, {avg_b}")
+a -= avg_a
+b -= avg_b
+
+print(f"{np.mean(a,0)}, {np.mean(b,0)}")
+
+
 
 # Compute one-sided squared Hausdorff distances
 hausdorff_a_to_b = pcu.one_sided_hausdorff_distance(a, b)
@@ -20,6 +42,7 @@ hausdorff_b_to_a = pcu.one_sided_hausdorff_distance(b, a)
 
 print(f"Hausdorff A to B: {hausdorff_a_to_b}")
 print(f"Hausdorff B to A: {hausdorff_b_to_a}")
+
 
 # %%
 
