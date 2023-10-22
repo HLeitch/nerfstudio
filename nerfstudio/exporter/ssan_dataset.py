@@ -50,6 +50,9 @@ class SSANDataset(dataset.Dataset):
         self.depth_84 -= bounding_box_min
         self.depth_84 /= (bounding_box_max-bounding_box_min)
 
+        self.ray_origins-= bounding_box_min
+        self.ray_origins /=(bounding_box_max - bounding_box_min)
+
 
     ### Converts the depth values to a 3d pos.
     def depth_to_point(self):
