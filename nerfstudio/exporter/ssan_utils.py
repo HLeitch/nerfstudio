@@ -241,7 +241,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.1,0.1,11)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.1,0.1,5)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         try:
             os.mkdir(f"{output_dir}")
         except:
@@ -263,7 +263,7 @@ class TSDFfromSSAN:
             voxel_size = voxel_size/(voxel_size.sum())
 
             ## move vertices back to world space
-            vertices = self.origin.view(1, 3).cpu().numpy() + vertices * voxel_size.view(1, 3).cpu().numpy()
+            vertices = (self.origin.view(1, 3).cpu().numpy() + vertices) * voxel_size.view(1, 3).cpu().numpy()
 
             # f = lambda x,y,z: self.surface_mlp(torch.Tensor((x,y,z)))[0]
 
@@ -419,7 +419,19 @@ class TSDFfromSSAN:
                         print("mloutputs contain nan")
 
                     ##surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
-                    surface_loss_value = (self.surface_surface_loss(mlp_prediction_surface) + self.inside_loss(mlp_prediction_inside)+ self.outside_loss(mlp_prediction_outside))
+                    ##surface_loss_value = (self.surface_surface_loss(mlp_prediction_surface) + self.inside_loss(mlp_prediction_inside)+ self.outside_loss(mlp_prediction_outside))
+                    mid_surface_loss = self.surface_surface_loss(mlp_prediction_surface) 
+                    inside_surface_loss = self.inside_loss(mlp_prediction_inside)
+                    outside_surface_loss = self.outside_loss(mlp_prediction_outside)
+                    profiler.add_scalar("Loss/Mid SurfaceLoss",mid_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/Inside SurfaceLoss",inside_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
+                    profiler.add_scalar("Loss/Outside SurfaceLoss",outside_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
+                    mid_surface_loss*=1
+                    inside_surface_loss*=1
+                    outside_surface_loss*=1
+                    
+                    surface_loss_value = mid_surface_loss + inside_surface_loss + outside_surface_loss
+                    
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
                     smoothness_loss = self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
@@ -465,7 +477,7 @@ class TSDFfromSSAN:
                     
                     ##Why not try this for a set
                     self.optimiser.zero_grad(set_to_none=True)
-                    
+
                     tot_loss.sum().backward()
 
                     self.optimiser.step()
@@ -576,12 +588,12 @@ class TSDFfromSSAN:
     
     def outside_loss(self,output_prediction_outside: torch.Tensor):
         surface_outside = output_prediction_outside[:,0]
-        surface_loss_value = (surface_outside - (torch.ones_like(surface_outside)*0.1))**2
+        surface_loss_value = (surface_outside - (torch.zeros_like(surface_outside)+0.1))**2
         return surface_loss_value
     
     def inside_loss(self,output_prediction_inside: torch.Tensor):
         surface_inside = output_prediction_inside[:,0]
-        surface_loss_value = (surface_inside + (torch.ones_like(surface_inside)*0.1))**2
+        surface_loss_value = (surface_inside + (torch.zeros_like(surface_inside)+0.1))**2
         return surface_loss_value
     def surface_surface_loss(self,output_prediction_surface: torch.Tensor):
         surface = output_prediction_surface[:,0]
