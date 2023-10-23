@@ -166,7 +166,7 @@ class TSDFfromSSAN:
         #         "seed": 210799
         #     },
         # )
-        # print(surface_mlp)
+        ##print(surface_mlp)
         encoding = tcnn.Encoding(3,encoding_config={
                 "otype": "HashGrid",
                 "n_levels": 15,
@@ -452,7 +452,7 @@ class TSDFfromSSAN:
                     smoothness_loss *= loss_weights[2]
                     orientation_loss *= loss_weights[3]
 
-                    tot_loss = (surface_loss_value) + (normal_consistency_value) + (smoothness_loss) + orientation_loss
+                    tot_loss = (surface_loss_value.sum()) + (normal_consistency_value.sum()) + (smoothness_loss.sum()) + orientation_loss.sum()
                     
                     profiler.add_scalar("LossContribution/SurfaceLoss", surface_loss_value.sum()/tot_loss.sum())
                     profiler.add_scalar("LossContribution/NormalRegularisation", normal_consistency_value.sum()/tot_loss.sum())
@@ -617,9 +617,9 @@ class TSDFfromSSAN:
         ##surface loss Li in NerfMeshing                            
         ##As we know the desired outputs for each of the depth measurements, we can easily calculate euclidian 
         ## distances to each
-        surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)*0.1))**2) + 
+        surface_loss_value = (((surface_outside+(torch.ones_like(surface_outside)*0.1))**2) + 
                             surface_mid**2 + 
-                            ((surface_inside+(torch.ones_like(surface_outside)*0.1))**2))
+                            ((surface_inside-(torch.ones_like(surface_outside)*0.1))**2))
 
         ##ray origins are always outside the surface value
         #ray_origin_loss = ((origins - (torch.ones_like(origins)*0.1))**2)
@@ -811,9 +811,9 @@ def export_ssan(
         os.chdir(os.pardir)
 
     for x in np.linspace(0,60,5,dtype=int):
-        profiler.add_image("Data/50 Depth Image/:",depth_images_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
-        profiler.add_image("Data/16 Depth Image/:",depth_images_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
-        profiler.add_image("Data/84 Depth Image/:",depth_images_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        # profiler.add_image("Data/50 Depth Image/:",depth_images_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        # profiler.add_image("Data/16 Depth Image/:",depth_images_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        # profiler.add_image("Data/84 Depth Image/:",depth_images_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/Normals Image/:",surface_normals[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/Ray Directions/: ",ray_directions[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/Colour Image/: ",color_images[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
@@ -827,8 +827,15 @@ def export_ssan(
     del ray_origins
     del ray_directions
     del ray_cam_inds
-    
+
+    dataset.artificial_inflation()
+    for x in np.linspace(0,60,5,dtype=int):
+        profiler.add_image("Data/50 Depth Image/:",dataset.depth_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/16 Depth Image/:",dataset.depth_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+        profiler.add_image("Data/84 Depth Image/:",dataset.depth_84[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
+
     dataset.depth_to_point()
+
     for x in np.linspace(0,60,5,dtype=int):
         profiler.add_image("Data/50 Depth Point/:",dataset.depth_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/16 Depth Point/:",dataset.depth_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
@@ -845,7 +852,7 @@ def export_ssan(
 
 
     remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
-    dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
+    ##dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
     print(f"Current dir: {os.listdir(os.curdir)}")
     

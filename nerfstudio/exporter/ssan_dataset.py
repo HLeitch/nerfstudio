@@ -52,7 +52,10 @@ class SSANDataset(dataset.Dataset):
 
         self.ray_origins-= bounding_box_min
         self.ray_origins /=(bounding_box_max - bounding_box_min)
-
+    
+    def artificial_inflation(self):
+        self.depth_16 = self.depth_16[:,:,:] - (0.01)
+        self.depth_84 = self.depth_84[:,:,:] + (0.01)
 
     ### Converts the depth values to a 3d pos.
     def depth_to_point(self):
