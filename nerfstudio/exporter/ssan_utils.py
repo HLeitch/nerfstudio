@@ -230,6 +230,10 @@ class TSDFfromSSAN:
                 _y+=1
             _x+=1
             _y=0
+
+        
+        ##clamp tsdf values between +/- 0.1
+        self.values = torch.Tensor.clamp(self.values,-0.1,0.1)
         
         # results = self.surface_mlp(grid.to(self.device))
         # surface_value = results[:,0]
@@ -242,6 +246,7 @@ class TSDFfromSSAN:
         ##tsdf_values_np = np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
         arr = np.linspace(-0.1,0.1,5)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = [0]
         try:
             os.mkdir(f"{output_dir}")
         except:
@@ -252,7 +257,7 @@ class TSDFfromSSAN:
 
         for x in arr:
             try:
-                vertices,triangles,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False)
+                vertices,triangles,normals,values = skmeasure.marching_cubes(tsdf_values_np,x,allow_degenerate=False,gradient_direction='ascent')
                 ##vertices, triangles = mcubes.marching_cubes(tsdf_values_np,x)
             except:
                 print(f"x is not able to thresholded the marching cubes")
@@ -452,8 +457,10 @@ class TSDFfromSSAN:
                     smoothness_loss *= loss_weights[2]
                     orientation_loss *= loss_weights[3]
 
-                    tot_loss = (surface_loss_value.sum()) + (normal_consistency_value.sum()) + (smoothness_loss.sum()) + orientation_loss.sum()
+                    tot_loss = (surface_loss_value.sum()) ##+ (normal_consistency_value.sum()) + (smoothness_loss.sum()) + orientation_loss.sum()
                     
+
+
                     profiler.add_scalar("LossContribution/SurfaceLoss", surface_loss_value.sum()/tot_loss.sum())
                     profiler.add_scalar("LossContribution/NormalRegularisation", normal_consistency_value.sum()/tot_loss.sum())
                     profiler.add_scalar("LossContribution/NormalSmoothnessLoss", smoothness_loss.sum()/tot_loss.sum())
@@ -477,10 +484,21 @@ class TSDFfromSSAN:
                     
                     ##Why not try this for a set
                     self.optimiser.zero_grad(set_to_none=True)
+                    mid_surface_loss.sum().backward()
+                    ##self.optimiser.step()
+                    
+                    ##self.optimiser.zero_grad(set_to_none=True)
+                    inside_surface_loss.sum().backward()
+                    ##self.optimiser.step()
 
-                    tot_loss.sum().backward()
+                    ##self.optimiser.zero_grad(set_to_none=True)
+                    outside_surface_loss.sum().backward()
 
+                    (mid_surface_loss.sum() + inside_surface_loss.sum() + outside_surface_loss.sum()).backward()
                     self.optimiser.step()
+                    ##tot_loss.sum().backward()
+
+                    ##self.optimiser.step()
                     
                     del mlp_prediction_surface
                     del mlp_prediction_inside
@@ -597,7 +615,7 @@ class TSDFfromSSAN:
         return surface_loss_value
     def surface_surface_loss(self,output_prediction_surface: torch.Tensor):
         surface = output_prediction_surface[:,0]
-        surface_loss_value = surface**2
+        surface_loss_value = (surface+(torch.zeros_like(surface)))**2
         return surface_loss_value
 
     def surface_loss(self,output_prediction_surface: torch.Tensor,
@@ -617,9 +635,9 @@ class TSDFfromSSAN:
         ##surface loss Li in NerfMeshing                            
         ##As we know the desired outputs for each of the depth measurements, we can easily calculate euclidian 
         ## distances to each
-        surface_loss_value = (((surface_outside+(torch.ones_like(surface_outside)*0.1))**2) + 
+        surface_loss_value = (((surface_outside-(torch.ones_like(surface_outside)*0.1))**2) + 
                             surface_mid**2 + 
-                            ((surface_inside-(torch.ones_like(surface_outside)*0.1))**2))
+                            ((surface_inside+(torch.ones_like(surface_outside)*0.1))**2))
 
         ##ray origins are always outside the surface value
         #ray_origin_loss = ((origins - (torch.ones_like(origins)*0.1))**2)
@@ -828,7 +846,7 @@ def export_ssan(
     del ray_directions
     del ray_cam_inds
 
-    dataset.artificial_inflation()
+    #dataset.artificial_inflation()
     for x in np.linspace(0,60,5,dtype=int):
         profiler.add_image("Data/50 Depth Image/:",dataset.depth_50[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
         profiler.add_image("Data/16 Depth Image/:",dataset.depth_16[x,:,:].cpu().numpy().T.swapaxes(1,2),global_step=x)
@@ -852,17 +870,11 @@ def export_ssan(
 
 
     remove_rays_outside_AABB(dataset,bounding_box_min,bounding_box_max)
-    ##dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
+    dataset.to_aabb_bounding_box(bounding_box_min,bounding_box_max)
 
     print(f"Current dir: {os.listdir(os.curdir)}")
     
-
-
-
     print(f"{dataset.depth_50.shape}")
-
-
-
 
     remove_inf_and_nan(dataset)
     dataset.trim_data(ray_limit)

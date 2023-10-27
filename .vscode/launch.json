@@ -189,13 +189,13 @@
         "Marching-tet",
         //Change to any preprepared nerfacto model. 
         "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-08-15_135545/config.yml",
-        "--output-dir=exports/tri-tsdf/inflationReduction/ignatius/ArtificialInflationinverse",
+        "--output-dir=exports/tri-tsdf/inflationReductionpt2/ignatius/SeperateLosses",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.15", "-0.2", "-0.35",
         "--bounding-box-max", "0.15", "0.2","0.35",
         "--loss_weights", "0.001", "0.00001", "0.00001", "0.000001",
-        "--epochs", "16",
-        "--batch_splits",  "40",
+        "--epochs", "40",
+        "--batch_splits",  "12",
         "--nerf_image_path=ssan/lastrender",
 
       ]

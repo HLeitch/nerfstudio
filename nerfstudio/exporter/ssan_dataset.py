@@ -50,8 +50,8 @@ class SSANDataset(dataset.Dataset):
         self.depth_84 -= bounding_box_min
         self.depth_84 /= (bounding_box_max-bounding_box_min)
 
-        self.ray_origins-= bounding_box_min
-        self.ray_origins /=(bounding_box_max - bounding_box_min)
+        # self.ray_origins-= bounding_box_min
+        # self.ray_origins /=(bounding_box_max - bounding_box_min)
     
     def artificial_inflation(self):
         self.depth_16 = self.depth_16[:,:,:] - (0.01)
