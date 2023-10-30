@@ -168,7 +168,8 @@ class TSDFfromSSAN:
         # )
         ##print(surface_mlp)
         encoding = tcnn.Encoding(3,encoding_config={
-                "otype": "HashGrid",
+                "otype": "Grid",
+                "type": "Hash",
                 "n_levels": 15,
                 "n_features_per_level": 2,
                 "log2_hashmap_size": 19,
@@ -245,7 +246,7 @@ class TSDFfromSSAN:
 
         ##tsdf_values_np = np.abs(tsdf_values_np)
         print(f"tsdf value np: {tsdf_values_np.shape}")
-        arr = np.linspace(-0.1,0.1,5)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
+        arr = np.linspace(-0.1,0.1,11)##[-0.5,-0.4,-0.3,-0.2,-0.1,0.0,0.1,0.2,0.3,0.4,0.5]
         arr = [0]
         try:
             os.mkdir(f"{output_dir}")
@@ -425,7 +426,7 @@ class TSDFfromSSAN:
 
                     ##surface_loss_value = self.surface_loss(mlp_prediction_surface,mlp_prediction_outside,mlp_prediction_inside,mlp_prediction_origins)
                     ##surface_loss_value = (self.surface_surface_loss(mlp_prediction_surface) + self.inside_loss(mlp_prediction_inside)+ self.outside_loss(mlp_prediction_outside))
-                    mid_surface_loss = self.surface_surface_loss(mlp_prediction_surface) 
+                    mid_surface_loss = self.surface_surface_loss(mlp_prediction_surface)
                     inside_surface_loss = self.inside_loss(mlp_prediction_inside)
                     outside_surface_loss = self.outside_loss(mlp_prediction_outside)
                     profiler.add_scalar("Loss/Mid SurfaceLoss",mid_surface_loss.sum()/(mlp_prediction_surface[:,0].shape[0]))
@@ -435,8 +436,9 @@ class TSDFfromSSAN:
                     inside_surface_loss*=1
                     outside_surface_loss*=1
                     
-                    surface_loss_value = mid_surface_loss + inside_surface_loss + outside_surface_loss
-                    
+                    surface_loss_value = torch.cat((mid_surface_loss,inside_surface_loss,outside_surface_loss),0)
+                    ##surface_loss_value = mid_surface_loss.sum()+inside_surface_loss.sum()+outside_surface_loss.sum()
+
                     # input of surface normal part of prediction
                     normal_consistency_value = self.normal_consistency_loss(mlp_prediction_outside[:,1:], mlp_prediction_inside[:,1:], normal_reg_constant = 10)
                     smoothness_loss = self.normal_smoothness_loss(mlp_prediction_surface,normal_truth)
@@ -484,21 +486,10 @@ class TSDFfromSSAN:
                     
                     ##Why not try this for a set
                     self.optimiser.zero_grad(set_to_none=True)
-                    mid_surface_loss.sum().backward()
-                    ##self.optimiser.step()
-                    
-                    ##self.optimiser.zero_grad(set_to_none=True)
-                    inside_surface_loss.sum().backward()
-                    ##self.optimiser.step()
 
-                    ##self.optimiser.zero_grad(set_to_none=True)
-                    outside_surface_loss.sum().backward()
+                    tot_loss.sum().backward()
 
-                    (mid_surface_loss.sum() + inside_surface_loss.sum() + outside_surface_loss.sum()).backward()
                     self.optimiser.step()
-                    ##tot_loss.sum().backward()
-
-                    ##self.optimiser.step()
                     
                     del mlp_prediction_surface
                     del mlp_prediction_inside
@@ -949,7 +940,7 @@ def remove_rays_outside_AABB(data: SSANDataset, AABB_min: torch.Tensor, AABB_max
     less_than_max = torch.where(data.depth_50 <= AABB_max,True,False)
 
 
-    valid_datums = torch.any((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
+    valid_datums = torch.all((torch.bitwise_and(greater_than_min,less_than_max)),dim=1)
 
     _d50 = data.depth_50[valid_datums]
     data.depth_50 = _d50
