@@ -314,6 +314,8 @@ def density_sampler(
 
     densities = pipeline.model.field.density_fn(pointTens)
 
+    ##remap densities to scale between 0 and 1
+
     print(f"Test Density: {pipeline.model.field.density_fn(pointTens)}")
 
     cpuDensity = densities.cpu().detach().numpy()

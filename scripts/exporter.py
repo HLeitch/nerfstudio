@@ -13,10 +13,11 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import open3d as o3d
 import open3d.visualization as o3dvis
-import skimage as sk
+import skimage as skimage
 import torch
 import tyro
 from rich.console import Console
+from torch.utils.tensorboard import SummaryWriter
 from typing_extensions import Annotated, Literal
 
 import nerfstudio.cameras.cameras as nscam
@@ -403,7 +404,7 @@ class ExportSamuraiMarchingCubes(Exporter):
     """Number of points to sample per axis. May result in less if outlier removal is used."""
     num_samples_points: int = 2000000
     """Number of points sampled on naive mesh"""
-    mc_level: int = int(10)
+    mc_level: float = float(10)
     """Threshold value for surfaces. Affects smoothness and amount of floaters. Higher = fewer floaters, more craters in object"""
     remove_outliers: bool = True
     """Remove outliers from the point cloud."""
@@ -443,6 +444,22 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         self.validate_pipeline(pipeline)
 
+        tb_file = SummaryWriter(self.output_dir.__str__()+f"/{time.time()}")
+
+        ##record parameters to tensorboard record
+        tb_file.add_text(f"num_samples_mc",f"{self.num_samples_mc}")
+        tb_file.add_text(f"num_samples_points",f"{self.num_samples_points}")
+        tb_file.add_text(f"mc_level",f"{self.mc_level}")
+        tb_file.add_text(f"remove_outliers",f"{self.remove_outliers}")
+        tb_file.add_text(f"depth_output_name",f"{self.depth_output_name}")
+        tb_file.add_text(f"normal_method",f"{self.normal_method}")
+        tb_file.add_text(f"output_file_name",f"{self.output_file_name}")
+        tb_file.add_text(f"num_rays_per_batch",f"{self.num_rays_per_batch}")
+        tb_file.add_text(f"bounding_box_min",f"{self.bounding_box_min}")
+        tb_file.add_text(f"bounding_box_max",f"{self.bounding_box_max}")
+
+
+
         # Increase the batchsize to speed up the evaluation.
         pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
 
@@ -455,6 +472,9 @@ class ExportSamuraiMarchingCubes(Exporter):
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
         )
+        print(np.amax(densities))
+        print(np.average(densities))
+        print(np.amin(densities))
         torch.cuda.empty_cache()
 
         ##distance is 5% of the avg range of bounding box
@@ -474,6 +494,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             densities,
             allow_degenerate=False,
             level=self.mc_level,
+            gradient_direction="ascent",
         )
 
         # convert properties to be compatible with cpu Triangle mesh(Has functions tesor does not)
@@ -488,7 +509,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         mesh.triangles = o3dTris
         mesh.vertex_normals = o3dNorms
 
-        pcd = mesh.sample_points_uniformly(number_of_points=1000000, use_triangle_normal=True)
+        pcd = mesh.sample_points_uniformly(number_of_points=self.num_samples_points, use_triangle_normal=True)
         print(
             f"After points sampled from mesh: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()} gpu mem allocated"
         )
@@ -645,15 +666,15 @@ class ExportSamuraiMarchingCubes(Exporter):
         for x in {9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
             mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-            vertices_to_remove = densities < np.quantile(densities, 0.3)
-            mesh.remove_vertices_by_mask(vertices_to_remove)
+            # vertices_to_remove = densities < np.quantile(densities, 0.3)
+            # mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
             CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
 
             if self.save_mesh:
                 ##Other programs for model veiwing read from 1. Python indexes from 0
 
-                path = self.output_dir.__str__() + "\\" + f"maxDepthNorms 0.3removed" + self.output_file_name
+                path = self.output_dir.__str__() + "\\" + self.output_file_name
 
                 o3d.io.write_triangle_mesh(path, mesh, print_progress=True)
 
