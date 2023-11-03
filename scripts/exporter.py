@@ -483,7 +483,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 0.5  # bb_avg * 0.1
+        dist_along_normal = 5 # bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -532,13 +532,13 @@ class ExportSamuraiMarchingCubes(Exporter):
         coloursCounter = 0
         coloursToUse = [
             [1.0, 0, 0],
-            [0, 1.0, 0],
-            [0, 0, 1.0],
-            [0.50, 0.50, 0],
-            [0.50, 0, 0.50],
-            [0, 0.50, 0.50],
-            [0.100, 0.100, 0.100],
-            [0.0, 0.0, 0.0],
+            # [0, 1.0, 0],
+            # [0, 0, 1.0],
+            # [0.50, 0.50, 0],
+            # [0.50, 0, 0.50],
+            # [0, 0.50, 0.50],
+            # [0.100, 0.100, 0.100],
+            # [0.0, 0.0, 0.0],
         ]
         point_counter = 0
 
@@ -551,10 +551,14 @@ class ExportSamuraiMarchingCubes(Exporter):
             normal_sample = position_normal_sample[..., 3:]
 
             ##direction from point along normal towards original point on mesh
-            ray_direction = torch.tensor(math.safe_normalize((position_sample + normal_sample) - position_sample))
+            ##ray_direction = torch.tensor(math.safe_normalize((position_sample + normal_sample) - position_sample))
+            ray_direction = torch.tensor(math.safe_normalize(normal_sample))
 
             # Ray origin at the extent of the distance along normal, stepping toward surface
             ray_origin = torch.tensor(position_sample + (-ray_direction * dist_along_normal))
+
+
+ 
 
             ##sample small area infront and behind original point
             sample_gap = torch.linspace(0.0, 2 * dist_along_normal, ray_samples)
@@ -574,6 +578,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             # print(f"spaced points shape = {spaced_points.shape}")
 
             densities = pipeline.model.field.density_fn(spaced_points)
+
 
             # point_dens = torch.cat((spaced_points, densities), 2)
             # print(f"pointdens = {point_dens}")
@@ -597,8 +602,17 @@ class ExportSamuraiMarchingCubes(Exporter):
             # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
 
             normal_sample = outputs[FieldHeadNames.NORMALS]
+            normal_sample = torch.tensor(normal_sample)
             ##normal_sample = torch.mean(normal_sample, 1)
             ## print(normal_sample)
+            # originsv3d = o3d.utility.Vector3dVector(spaced_points.reshape([-1,3]))
+            # colorv3d = o3d.utility.Vector3dVector(normal_sample.reshape([-1,3]).cpu().numpy())
+
+            # debug_cloud = o3d.geometry.PointCloud(originsv3d)
+            # debug_cloud.colors = colorv3d
+            ##o3dvis.draw(debug_cloud)
+
+            
             idx = 0
             colouridx = coloursCounter % len(coloursToUse)
             for d in densest_in_ray:
@@ -626,6 +640,12 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = torch.stack(refined_normals).to(torch_device)
 
         refined_points = refined_points.reshape((-1, 3))
+        refined_normals = refined_normals.reshape((-1,3))
+        pointsv3d = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
+        normalv3d = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
+        debug_cloud = o3d.geometry.PointCloud(pointsv3d)
+        debug_cloud.colors = normalv3d
+        o3dvis.draw(debug_cloud)
 
         # ray_sam = RaySamples(
         #     frustums=Frustums(
@@ -654,8 +674,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
 
         ref_pcd.points = ref_verts
-        ref_pcd.normals = ref_norms
-        # ref_pcd.estimate_normals()
+        ##ref_pcd.normals = ref_norms
+        ref_pcd.estimate_normals()
         print(ref_pcd.points)
         ref_pcd.colors = ref_norms
         o3dvis.draw(geometry=(ref_pcd))
@@ -674,7 +694,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             if self.save_mesh:
                 ##Other programs for model veiwing read from 1. Python indexes from 0
 
-                path = self.output_dir.__str__() + "\\" + self.output_file_name
+                path = self.output_dir.__str__() + f"\\PoissonDepth{x}" + self.output_file_name
 
                 o3d.io.write_triangle_mesh(path, mesh, print_progress=True)
 
