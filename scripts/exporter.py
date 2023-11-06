@@ -483,7 +483,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = 5 # bb_avg * 0.1
+        dist_along_normal = bb_avg * 0.1
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -577,14 +577,14 @@ class ExportSamuraiMarchingCubes(Exporter):
             # print(spaced_points)
             # print(f"spaced points shape = {spaced_points.shape}")
 
-            densities = pipeline.model.field.density_fn(spaced_points)
+            ##densities = pipeline.model.field.density_fn(spaced_points)
 
 
             # point_dens = torch.cat((spaced_points, densities), 2)
             # print(f"pointdens = {point_dens}")
             # print(f"densities = {densities}")
 
-            densest_in_ray = densities.argmax(1)
+            ##densest_in_ray = densities.argmax(1)
             print(f"Before raysample declared: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             # Compute average of normals of each point sampled.
             ray_sam = RaySamples(
@@ -599,6 +599,8 @@ class ExportSamuraiMarchingCubes(Exporter):
             )
             # print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
+            output_densities = outputs[FieldHeadNames.DENSITY]
+            densest_in_ray = output_densities.argmax(1)
             # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
 
             normal_sample = outputs[FieldHeadNames.NORMALS]
@@ -617,7 +619,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             colouridx = coloursCounter % len(coloursToUse)
             for d in densest_in_ray:
 
-                if densities[idx, densest_in_ray[idx]] > 0.0:
+                if output_densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d])
                     refined_normals.append(normal_sample[idx, d])
 

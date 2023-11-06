@@ -232,7 +232,7 @@
       "args": [
         "samurai-mc",
         "--load-config=outputs\\data\\unreal150\\nerfacto\\2023-09-18_120301/config.yml",
-        "--output-dir=exports/samurai/poissonTest/",
+        "--output-dir=exports/samurai/output_density/",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.12", "-0.3", "-0.1",
         "--bounding-box-max", "0.08", "-0.1","0.1",
