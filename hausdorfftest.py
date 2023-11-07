@@ -67,9 +67,9 @@ def IterationTest(file_a, file_b):
     output = torchops.iterative_closest_point(a_pc, b_pc,verbose=True,max_iterations=200)
     rmse = output.rmse
     transformed_a = output.Xt
-    
-    a_full_pc = output.RTs.transform_points(a_full_pc)
-    
+    RTs = output.RTs
+    https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html#iterative_closest_point
+    a_full_pc
     #%%
     print(f"converted: {output.converged}, rmse{output.rmse}")
     print(f"simTransform {output.RTs}")
