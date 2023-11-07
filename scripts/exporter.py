@@ -408,6 +408,8 @@ class ExportSamuraiMarchingCubes(Exporter):
     """Threshold value for surfaces. Affects smoothness and amount of floaters. Higher = fewer floaters, more craters in object"""
     remove_outliers: bool = True
     """Remove outliers from the point cloud."""
+    ray_depth_length: float = float(0.5)
+    """Maximum distance sampled to surface."""
     depth_output_name: str = "depth"
     """Name of the depth output."""
     normal_method: Literal["open3d", "model_output"] = "model_output"
@@ -457,6 +459,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         tb_file.add_text(f"num_rays_per_batch",f"{self.num_rays_per_batch}")
         tb_file.add_text(f"bounding_box_min",f"{self.bounding_box_min}")
         tb_file.add_text(f"bounding_box_max",f"{self.bounding_box_max}")
+        tb_file.add_text(f"ray_depth_Length",f"{self.ray_depth_length}")
 
 
 
@@ -483,7 +486,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         bb_size = tuple(map(lambda i, j: i - j, self.bounding_box_max, self.bounding_box_min))
         bb_avg = (bb_size[0] + bb_size[1] + bb_size[2]) / 3
 
-        dist_along_normal = bb_avg * 0.1
+        dist_along_normal = self.ray_depth_length
         print(f"ray length = {dist_along_normal}")
 
         device = o3d.core.Device("CUDA:0")
@@ -605,7 +608,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             normal_sample = outputs[FieldHeadNames.NORMALS]
             normal_sample = torch.tensor(normal_sample)
-            ##normal_sample = torch.mean(normal_sample, 1)
+            normal_sample = torch.mean(normal_sample, 1)
             ## print(normal_sample)
             # originsv3d = o3d.utility.Vector3dVector(spaced_points.reshape([-1,3]))
             # colorv3d = o3d.utility.Vector3dVector(normal_sample.reshape([-1,3]).cpu().numpy())
@@ -621,7 +624,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
                 if output_densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d])
-                    refined_normals.append(normal_sample[idx, d])
+                    refined_normals.append(normal_sample[idx])
 
                     point_counter += 1
 
@@ -676,20 +679,22 @@ class ExportSamuraiMarchingCubes(Exporter):
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
 
         ref_pcd.points = ref_verts
-        ##ref_pcd.normals = ref_norms
-        ref_pcd.estimate_normals()
+        ref_pcd.normals = ref_norms
+        ##ref_pcd.estimate_normals()
+        ref_pcd.normalize_normals()
         print(ref_pcd.points)
-        ref_pcd.colors = ref_norms
+        print(ref_pcd.normals)
+        ref_pcd.colors = pcd.normals
         o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
         ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_165440/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.013000000000000067 -0.24700000000000005 -0.15000000000000002 --bounding-box-max 0.3430000000000001 0.08299999999999998 0.18000000000000005 --num-samples-mc 250
 
-        for x in {9}:
+        for x in {6,7,8,9}:
             CONSOLE.print("Computing Mesh... this may take a while.")
             mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-            # vertices_to_remove = densities < np.quantile(densities, 0.3)
-            # mesh.remove_vertices_by_mask(vertices_to_remove)
+            vertices_to_remove = densities < np.quantile(densities, 0.01)
+            mesh.remove_vertices_by_mask(vertices_to_remove)
             print("\033[A\033[A")
             CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
 
