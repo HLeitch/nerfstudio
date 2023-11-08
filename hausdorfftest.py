@@ -8,8 +8,10 @@ import pytorch3d as torch3d
 import pytorch3d.ops as torchops
 from pytorch3d.structures import Pointclouds
 import torch as torch
+import pandas
 
-def IterationTest(file_a, file_b):
+def IterationTest(file_a, file_b, num_points):
+    print(f"Test for quality of relocation for {num_points} points")
     
     # Generate two random point sets
     a = pcu.load_mesh_v(file_a)
@@ -28,8 +30,8 @@ def IterationTest(file_a, file_b):
     a_tensor = a_tensor_full[randomPoints]
     b_tensor = b_tensor_full[randomPoints]
     
-    a_tensor = a_tensor[:10000][None,:,:]
-    b_tensor = b_tensor[:10000][None,:,:]
+    a_tensor = a_tensor[:num_points][None,:,:]
+    b_tensor = b_tensor[:num_points][None,:,:]
     
     print(f"{a_tensor.shape}")
     #result = 
@@ -68,8 +70,13 @@ def IterationTest(file_a, file_b):
     rmse = output.rmse
     transformed_a = output.Xt
     RTs = output.RTs
-    https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html#iterative_closest_point
-    a_full_pc
+    
+    ## reduced a points only
+    small_a = transformed_a.points_padded()
+    
+    ##Applying similarity transform(taken from ICP code from function above.)
+    a_full_pc = RTs.s[:,None,None] * torch.bmm(a_full_pc.points_padded(), RTs.R) + RTs.T[:,None,:]
+    
     #%%
     print(f"converted: {output.converged}, rmse{output.rmse}")
     print(f"simTransform {output.RTs}")
@@ -78,44 +85,54 @@ def IterationTest(file_a, file_b):
     print(f"xT = {output.Xt}")
     ##transformed = output.Xt.points_list()
     
-    fig = plt.figure()
-    ax = fig.add_subplot(111,projection="3d")
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111,projection="3d")
     
-    ax.scatter(transformed_a[0][:,0],transformed_a[0][:,1],transformed_a[0][:,2],marker=".")
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
+    # ax.scatter(a_full_pc[:,0],a_full_pc[:,1],a_full_pc[:,2],marker=".")
+    # ax.set_xlabel('X Label')
+    # ax.set_ylabel('Y Label')
+    # ax.set_zlabel('Z Label')
     
     
-    plt.show()
+    # plt.show()
     
     # %%
     # Compute one-sided squared Hausdorff distances
-    hausdorff_a_to_b = pcu.one_sided_hausdorff_distance(transformed_a, b)
-    hausdorff_b_to_a = pcu.one_sided_hausdorff_distance(b, transform_a)
+    ## Reduced point cloud
+    reduced_pc_comparison = pcu.one_sided_hausdorff_distance(small_a.cpu().numpy()[0], b_tensor.cpu().numpy()[0])
     
-    print(f"Hausdorff A to B: {hausdorff_a_to_b}")
-    print(f"Hausdorff B to A: {hausdorff_b_to_a}")
+    ## full point clouds
+    full_pc_comparison = pcu.one_sided_hausdorff_distance(a_full_pc[0].cpu().numpy(), b_full_pc.points_padded().cpu().numpy()[0])
+    
+    print(f"Reduced Hausdorff Reduced Data: {reduced_pc_comparison}")
+    print(f"Directional Hausdorff Full Data: {full_pc_comparison}")
     
     
     # %%
     
     # Take a max of the one sided squared  distances to get the two sided Hausdorff distance
-    hausdorff_dist = pcu.hausdorff_distance(transformed_a, b)
+    general_hausdorff = pcu.hausdorff_distance(a_full_pc[0].cpu().numpy(), b_full_pc.points_padded().cpu().numpy()[0])
     
-    # Find the index pairs of the two points with maximum shortest distancce
-    hausdorff_b_to_a, idx_b, idx_a = pcu.one_sided_hausdorff_distance(b, transformed_a, return_index=True)
-    assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_b_to_a**2) < 1e-5, "These values should be almost equal"
-    print(f"Hausdorff shortest: {hausdorff_a_to_b}")
+    # # Find the index pairs of the two points with maximum shortest distancce
+    # hausdorff_b_to_a, idx_b, idx_a = pcu.one_sided_hausdorff_distance(b, transformed_a, return_index=True)
+    # assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_b_to_a**2) < 1e-5, "These values should be almost equal"
+    # print(f"Hausdorff shortest: {hausdorff_a_to_b}")
     
     
-    # Find the index pairs of the two points with maximum shortest distancce
-    hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(b, transformed_a, return_index=True)
-    assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
-    print(f"Hausdorff max: {hausdorff_a_to_b}")
+    # # Find the index pairs of the two points with maximum shortest distancce
+    # hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(b, transformed_a, return_index=True)
+    # assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
+    # print(f"Hausdorff max: {hausdorff_a_to_b}")
     
-    return rmse, hausdorff_dist
+    return rmse.cpu().numpy(), reduced_pc_comparison, full_pc_comparison, general_hausdorff
 #%%
+results = pandas.DataFrame([],columns=['num_points','rmse','ICP_hausdorff','Full_1D_hausdorff','Full_2D_hausdorff'])
 
-u,v = IterationTest("./data/tandt/Ignatius/ignatius_x_rot.obj", "./data/tandt/Ignatius/Ignatius_z_rot.obj")
+for num_points in [10,30,50,75,100, 200, 500, 750, 1000, 1500, 2000, 5000, 7500, 10000, 15000, 20000]:
+    rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff = IterationTest("./data/tandt/Ignatius/ignatius_base.obj", "./data/tandt/Ignatius/Ignatius_z_rot.obj", num_points)
     
+    new_row = {'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff}
+    
+    results = results.append(new_row,ignore_index=True)
+print(results.to_string())
+        
