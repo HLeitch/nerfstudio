@@ -9,9 +9,11 @@ import pytorch3d.ops as torchops
 from pytorch3d.structures import Pointclouds
 import torch as torch
 import pandas
+import time
 
 def IterationTest(file_a, file_b, num_points):
     print(f"Test for quality of relocation for {num_points} points")
+    time_start = time.time()
     
     # Generate two random point sets
     a = pcu.load_mesh_v(file_a)
@@ -24,11 +26,12 @@ def IterationTest(file_a, file_b, num_points):
     b_tensor_full = torch.tensor(b,dtype=torch.float)
 
     
-    randomPoints = torch.randperm(a_tensor_full.shape[0])
+    randomPointsA = torch.randperm(a_tensor_full.shape[0])
+    randomPointsB = torch.randperm(b_tensor_full.shape[0])
     
-    ##randomly select 4000 points 
-    a_tensor = a_tensor_full[randomPoints]
-    b_tensor = b_tensor_full[randomPoints]
+    ##randomly select a number of points 
+    a_tensor = a_tensor_full[randomPointsA]
+    b_tensor = b_tensor_full[randomPointsB]
     
     a_tensor = a_tensor[:num_points][None,:,:]
     b_tensor = b_tensor[:num_points][None,:,:]
@@ -70,6 +73,10 @@ def IterationTest(file_a, file_b, num_points):
     rmse = output.rmse
     transformed_a = output.Xt
     RTs = output.RTs
+    time_taken = time.time() - time_start
+    print(time_taken)
+    
+    iterations_taken = output.t_history.__len__()
     
     ## reduced a points only
     small_a = transformed_a.points_padded()
@@ -123,15 +130,15 @@ def IterationTest(file_a, file_b, num_points):
     # hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(b, transformed_a, return_index=True)
     # assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
     # print(f"Hausdorff max: {hausdorff_a_to_b}")
-    
-    return rmse.cpu().numpy(), reduced_pc_comparison, full_pc_comparison, general_hausdorff
-#%%
-results = pandas.DataFrame([],columns=['num_points','rmse','ICP_hausdorff','Full_1D_hausdorff','Full_2D_hausdorff'])
 
-for num_points in [10,30,50,75,100, 200, 500, 750, 1000, 1500, 2000, 5000, 7500, 10000, 15000, 20000]:
-    rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff = IterationTest("./data/tandt/Ignatius/ignatius_base.obj", "./data/tandt/Ignatius/Ignatius_z_rot.obj", num_points)
+    return rmse.cpu().numpy(), reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken
+#%%
+results = pandas.DataFrame([],columns=['num_points','rmse','ICP_hausdorff','Full_1D_hausdorff','Full_2D_hausdorff','time_taken','iterations'])
+
+for num_points in [100, 200, 500, 750, 1000, 1500, 2000, 5000, 7500, 10000, 15000, 20000]:
+    rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken =IterationTest("./data/tandt/Ignatius/ignatius_base.obj", "./data/tandt/Ignatius/Ignatius_z_rot.obj", num_points) ##IterationTest("./data/tandt/Caterpillar/Caterpillar_base.obj", "./data/tandt/Caterpillar/Caterpillar_shifted.obj", num_points)
     
-    new_row = {'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff}
+    new_row = {'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff, 'time_taken': time_taken, 'iterations': iterations_taken}
     
     results = results.append(new_row,ignore_index=True)
 print(results.to_string())
