@@ -42,25 +42,25 @@ def IterationTest(file_a, file_b, num_points):
     # %%
     
     # Moving both sets of points to the origin.
-    avg_a = np.mean(a_tensor.numpy(),0)
-    avg_b = np.mean(b_tensor.numpy(),0)
+    # avg_a = np.mean(a_tensor.numpy(),0)
+    # avg_b = np.mean(b_tensor.numpy(),0)
     
-    print(f"{avg_a}, {avg_b}")
-    a = avg_a
-    b = avg_b
+    # print(f"{avg_a}, {avg_b}")
+    # a = avg_a
+    # b = avg_b
     
-    print(f"{np.mean(a,0)}, {np.mean(b,0)}")
-    fig = plt.figure()  
-    ax = fig.add_subplot(111,projection="3d")
+    # print(f"{np.mean(a,0)}, {np.mean(b,0)}")
+    # fig = plt.figure()  
+    # ax = fig.add_subplot(111,projection="3d")
     
-    ax.scatter(a[:,0],a[:,1],a[:,2],marker=".")
-    ##ax.scatter(b[:,0],b[:,1],b[:,2],marker=".")
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
+    # ax.scatter(a[:,0],a[:,1],a[:,2],marker=".")
+    # ##ax.scatter(b[:,0],b[:,1],b[:,2],marker=".")
+    # ax.set_xlabel('X Label')
+    # ax.set_ylabel('Y Label')
+    # ax.set_zlabel('Z Label')
     
     
-    plt.show()
+    # plt.show()
     #%%
     
     a_pc = Pointclouds(a_tensor)
@@ -69,7 +69,7 @@ def IterationTest(file_a, file_b, num_points):
     b_full_pc = Pointclouds(b_tensor_full[None,:,:])
     #%%
     
-    output = torchops.iterative_closest_point(a_pc, b_pc,verbose=True,max_iterations=200)
+    output = torchops.iterative_closest_point(a_pc, b_pc,verbose=True,max_iterations=500)
     rmse = output.rmse
     transformed_a = output.Xt
     RTs = output.RTs
@@ -77,6 +77,7 @@ def IterationTest(file_a, file_b, num_points):
     print(time_taken)
     
     iterations_taken = output.t_history.__len__()
+    print(iterations_taken)
     
     ## reduced a points only
     small_a = transformed_a.points_padded()
