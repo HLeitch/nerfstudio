@@ -51,17 +51,17 @@ def IterationTest(file_a, file_b, num_points):
     # b = avg_b
     
     # print(f"{np.mean(a,0)}, {np.mean(b,0)}")
-    # fig = plt.figure()  
-    # ax = fig.add_subplot(111,projection="3d")
+    fig = plt.figure()  
+    ax = fig.add_subplot(111,projection="3d")
     
-    # ax.scatter(a[:,0],a[:,1],a[:,2],marker=".")
-    # ##ax.scatter(b[:,0],b[:,1],b[:,2],marker=".")
-    # ax.set_xlabel('X Label')
-    # ax.set_ylabel('Y Label')
-    # ax.set_zlabel('Z Label')
+    ax.scatter(a_tensor[0,:,0],a_tensor[0,:,1],a_tensor[0,:,2],marker=".")
+    ax.scatter(b_tensor[0,:,0],b_tensor[0,:,1],b_tensor[0,:,2],marker=".",color="r")
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
     
     
-    # plt.show()
+    plt.show()
     #%%
     
     a_pc = Pointclouds(a_tensor)
