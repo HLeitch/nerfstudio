@@ -232,7 +232,7 @@
       "args": [
         "samurai-mc",
         "--load-config=outputs\\data\\unreal150\\nerfacto\\2023-09-18_120301/config.yml",
-        "--output-dir=exports/samurai/output_density/normalisenormalfunction/",
+        "--output-dir=exports/samurai/JanExperiment/sampleNumNormTangent/",
         "--use-bounding-box=True",
         "--bounding-box-min", "-0.12", "-0.3", "-0.1",
         "--bounding-box-max", "0.08", "-0.1","0.1",
@@ -254,15 +254,15 @@
       "args": [
         "samurai-mc",
         "--load-config=outputs\\test-sphere\\nerfacto\\2023-04-27_164800/config.yml",
-        "--output-dir=exports/samurai/normalisenormalfunction/",
+        "--output-dir=exports/samurai/JanExperiment/sampleNumNormTangent/",
         "--use-bounding-box=True",
         "--bounding-box-min", "0.004000000000000031", "-0.25200000000000006", "-0.11099999999999997",
         "--bounding-box-max", "0.30400000000000005", "0.04799999999999993","0.189",
         "--num-samples-mc", "200",
         "--num-samples-points", "1000000",
         "--output-file-name", "samurai.obj",
-        "--mc_level", "40000",
-        "--normal_method", "open3d"
+        "--mc_level", "0.1",
+        "--normal_method", "open3d",
         "--ray_depth_length","0.5",
 
       ]
@@ -276,15 +276,15 @@
       "args": [
         "samurai-mc",
         "--load-config=outputs/data/TandT/Ignatius/nerfacto/2023-08-15_135545/config.yml",
-        "--output-dir=exports/samurai/output_density/PoissonDepth/",
+        "--output-dir=exports/samurai/output_density/JanExperiment/sampleNumNormTangent/",
         "--use-bounding-box=True",
-        "--bounding-box-min", "-0.15", "-0.2", "-0.35",
+        "--bounding-box-min", "-0.15", "-0.2", "-0.3",
         "--bounding-box-max", "0.15", "0.2","0.35",
-        "--num-samples-mc", "258",
-        "--num-samples-points", "2000000",
+        "--num-samples-mc", "200",
+        "--num-samples-points", "1000000",
         "--output-file-name", "Ignatius.obj",
         "--mc_level", "2",
-        "--normal_method", "open3d"
+        "--normal_method", "open3d",
         "--ray_depth_length","0.5",
 
       ]
