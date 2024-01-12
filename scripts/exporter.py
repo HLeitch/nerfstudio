@@ -478,8 +478,10 @@ class ExportSamuraiMarchingCubes(Exporter):
         print(np.amax(densities))
         print(np.average(densities))
         print(np.amin(densities))
+        tb_file.add_text(f"Density",f"Average:{np.average(densities)}, Max:{np.amax(densities)}, Min:{np.amin(densities)}")
+        
+        dense_Avg = np.average(densities)
         torch.cuda.empty_cache()
-
         ##distance is 5% of the avg range of bounding box
 
         ##size of bb
@@ -496,7 +498,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         verts, faces, normals, values = skimage.measure.marching_cubes(
             densities,
             allow_degenerate=False,
-            level=self.mc_level,
+            level=dense_Avg,
             gradient_direction="ascent",
         )
 
@@ -529,7 +531,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = []
         colours = []
         counter = 0
-        chunk_size = 262144  # 65536 ##2^16
+        chunk_size = 1048576 ##262144  # 65536 ##2^16
         ray_samples = 8
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
@@ -588,7 +590,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             # print(f"densities = {densities}")
 
             ##densest_in_ray = densities.argmax(1)
-            print(f"Before raysample declared: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            ##print(f"Before raysample declared: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             # Compute average of normals of each point sampled.
             ray_sam = RaySamples(
                 frustums=Frustums(
@@ -600,7 +602,7 @@ class ExportSamuraiMarchingCubes(Exporter):
                 ),
                 camera_indices=torch.randint_like(spaced_points[..., :1], 150).cuda(),
             )
-            # print(f"Before raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
+            print(f"Memory Usage: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
             output_densities = outputs[FieldHeadNames.DENSITY]
             densest_in_ray = output_densities.argmax(1)
