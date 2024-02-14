@@ -281,7 +281,7 @@
         "--bounding-box-min", "-0.15", "-0.2", "-0.3",
         "--bounding-box-max", "0.15", "0.2","0.35",
         "--num-samples-mc", "200",
-        "--num-samples-points", "1000000",
+        "--num-samples-points", "500000",
         "--output-file-name", "Ignatius.obj",
         "--mc_level", "2",
         "--normal_method", "open3d",

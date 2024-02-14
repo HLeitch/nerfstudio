@@ -40,7 +40,7 @@ from nerfstudio.exporter.exporter_utils import (
     render_trajectory,
     render_trajectory_tri_tsdf,
 )
-from nerfstudio.exporter.object_renderer import render_mesh
+from nerfstudio.exporter.object_renderer import render_mesh_to_tbfrom_components
 from nerfstudio.exporter.ssan_dataset import SSANDataset
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
@@ -278,7 +278,7 @@ class TSDFfromSSAN:
             ##try:
                 ##mcUtils.save_obj(vertices,normals,faces,output_dir=f"./",file_name=f"threshold_{x}.obj")
             mcubes.export_obj(vertices,triangles,f"threshold_{x}.obj")
-            render_mesh(vertices,triangles,torch.tensor(0),f"threshold_{x}_render",profiler=profiler)
+            render_mesh_to_tbfrom_components(vertices,triangles,torch.tensor(0),f"threshold_{x}_render",profiler=profiler)
             ##except:
                 #print(f"x is not able to thresholded the marching cubes")
 

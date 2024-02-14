@@ -37,7 +37,7 @@ from nerfstudio.exporter.exporter_utils import (
     render_trajectory,
     render_trajectory_tri_tsdf,
 )
-from nerfstudio.exporter.object_renderer import render_mesh
+from nerfstudio.exporter.object_renderer import render_mesh_to_tbfrom_components
 from nerfstudio.exporter.ssan_dataset import SSANDataset
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth

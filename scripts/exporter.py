@@ -30,6 +30,7 @@ from nerfstudio.exporter.exporter_utils import (
     generate_point_cloud,
     get_mesh_from_filename,
 )
+from nerfstudio.exporter.object_renderer import render_mesh_to_tb
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils import math as math
@@ -475,11 +476,13 @@ class ExportSamuraiMarchingCubes(Exporter):
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
         )
-        print(np.amax(densities))
-        print(np.average(densities))
-        print(np.amin(densities))
-        tb_file.add_text(f"Density",f"Average:{np.average(densities)}, Max:{np.amax(densities)}, Min:{np.amin(densities)}")
-        
+        densities_flat = densities.reshape(1,-1)
+        print(f"max densities = {np.amax(densities)}")
+        print(f"average Denisites = {np.average(densities)}")
+        print(f"Min Densities = {np.amin(densities)}")
+        tb_file.add_text(f"Density" ,f"Average:{np.average(densities)}, Max:{np.amax(densities)}, Min:{np.amin(densities)}")
+        # Create histogram of the densities of the originally sampled points.
+        tb_file.add_histogram("Densities/First Pass",densities_flat,bins='doane')
         dense_Avg = np.average(densities)
         torch.cuda.empty_cache()
         ##distance is 5% of the avg range of bounding box
@@ -501,6 +504,8 @@ class ExportSamuraiMarchingCubes(Exporter):
             level=dense_Avg,
             gradient_direction="ascent",
         )
+
+
 
         # convert properties to be compatible with cpu Triangle mesh(Has functions tesor does not)
         o3dVerts = o3d.utility.Vector3dVector(verts)
@@ -702,6 +707,9 @@ class ExportSamuraiMarchingCubes(Exporter):
                 mesh.remove_vertices_by_mask(vertices_to_remove)
                 print("\033[A\033[A")
                 CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
+                
+                ##outputs images of the mesh to tensorboard file
+                render_mesh_to_tb(mesh,self.output_dir.__str__(),tb_file)
 
                 if self.save_mesh:
                     ##Other programs for model veiwing read from 1. Python indexes from 0
