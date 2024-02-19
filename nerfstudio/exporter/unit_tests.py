@@ -1,6 +1,3 @@
-from nerfstudio.exporter.ssan_utils import SSANDataset
-from nerfstudio.exporter.ssan_utils import TSDFfromSSAN
-
 from __future__ import annotations
 
 import os as os
@@ -39,11 +36,21 @@ from nerfstudio.exporter.exporter_utils import (
 )
 from nerfstudio.exporter.object_renderer import render_mesh_to_tbfrom_components
 from nerfstudio.exporter.ssan_dataset import SSANDataset
+from nerfstudio.exporter.ssan_utils import SSANDataset, TSDFfromSSAN
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.models.nerfacto import NerfactoModelTriDepth
 from nerfstudio.pipelines.base_pipeline import Pipeline
 from nerfstudio.utils.math import safe_normalize
 
 
-def test(ssanNetwork: TSDFfromSSAN, dataset: SSANDataset,tensorboard: SummaryWriter):
-    
+###Due to compatiblity issues, a method seperate from tensorboard is needed to display density histograms.
+###This method uses matplotlib and should save the output to a file in the same directory as the tensorboard data
+###Returns: histogram numpy object
+def display_histogram_of_densities(densities,file_destination,title="Density"):
+    a = densities.reshape((1,-1))
+    hist = plt.hist(a, bins='fb',density=True)  # arguments are passed to np.histogram
+    plt.title(title)
+    plt.savefig(f"{file_destination}_{title}.png")
+    plt.show()
+    return hist
+        

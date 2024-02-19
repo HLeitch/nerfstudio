@@ -31,6 +31,7 @@ from nerfstudio.exporter.exporter_utils import (
     get_mesh_from_filename,
 )
 from nerfstudio.exporter.object_renderer import render_mesh_to_tb
+from nerfstudio.exporter.unit_tests import display_histogram_of_densities
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils import math as math
@@ -476,13 +477,17 @@ class ExportSamuraiMarchingCubes(Exporter):
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
         )
-        densities_flat = densities.reshape(1,-1)
+        densities_flat = densities.reshape(-1)
         print(f"max densities = {np.amax(densities)}")
         print(f"average Denisites = {np.average(densities)}")
         print(f"Min Densities = {np.amin(densities)}")
-        tb_file.add_text(f"Density" ,f"Average:{np.average(densities)}, Max:{np.amax(densities)}, Min:{np.amin(densities)}")
+
+        histogram =  np.histogram(densities_flat)
+        tb_file.add_text(f"Density" ,f"Average: {np.average(densities)}, Max: {np.amax(densities)}, Min: {np.amin(densities)}")
+        dense_histogram = display_histogram_of_densities(densities,self.output_file_name,"First Pass Density")
+        ##tb_file.add_figure("firstPass Density",histogram)
         # Create histogram of the densities of the originally sampled points.
-        tb_file.add_histogram("Densities/First Pass",densities_flat,bins='doane')
+        ##tb_file.add_histogram("First Pass",densities_flat,global_step=0,bins='tensorflow',max_bins=100)
         dense_Avg = np.average(densities)
         torch.cuda.empty_cache()
         ##distance is 5% of the avg range of bounding box
