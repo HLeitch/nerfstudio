@@ -241,10 +241,15 @@ TEST_SPHERE -0.1.obj
 
 images/room.png
 
+<<<<<<< Updated upstream
 Old loss Runs.zip
 
 runs/mass runs.zip
 
 trash surface value low.zip
+<<<<<<< Updated upstream
+=======
+=======
+statue_epoch_test/
 
 .vscode/launch.json
