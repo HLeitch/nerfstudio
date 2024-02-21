@@ -484,7 +484,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         histogram =  np.histogram(densities_flat)
         tb_file.add_text(f"Density" ,f"Average: {np.average(densities)}, Max: {np.amax(densities)}, Min: {np.amin(densities)}")
-        dense_histogram = display_histogram_of_densities(densities,self.output_file_name,"First Pass Density")
+        dense_histogram = display_histogram_of_densities(densities,self.output_dir,f"First Pass Density_{self.output_file_name[0:-4]}")
         ##tb_file.add_figure("firstPass Density",histogram)
         # Create histogram of the densities of the originally sampled points.
         ##tb_file.add_histogram("First Pass",densities_flat,global_step=0,bins='tensorflow',max_bins=100)
