@@ -47,26 +47,44 @@ from nerfstudio.utils.math import safe_normalize
 ###This method uses matplotlib and should save the output to a file in the same directory as the tensorboard data
 ###Returns: histogram numpy object
 def display_histogram_of_densities(densities,file_destination,title="Density"):
-    a = densities.reshape((1,-1))
-    hist = plt.hist(a[0], bins=300)  # arguments are passed to np.histogram
+    if not file_destination.exists():
+            file_destination.mkdir(parents=True)
+    a = np.array(densities)
+    a = densities.reshape((-1))
+    hist = plt.hist(a, bins=300)  # arguments are passed to np.histogram
     #plt.show()
     plt.title(f"{title} \n Avg: {np.average(a)}")
     plt.ylabel("Count")
     plt.xlabel("Density")
-    plt.savefig(f"{file_destination}_{title}.png",dpi=400)
+    plt.savefig(f"{file_destination}\{title}.png",dpi=400)
 
     plt.ylim(top=300)
-    plt.savefig(f"{file_destination}_{title}_Shrunk.png",dpi=400)
+    plt.savefig(f"{file_destination}\{title}_Shrunk.png",dpi=400)
     plt.clf()
 
-    quantiled = np.array(a)
-    np.quantile(a,0.9, out=quantiled)
-    plt.hist(quantiled,bins=3000)
-    plt.title(f"{title} 90th percentile \n Avg: {np.average(quantiled)}")
+    percentile = 0.95
+    a_percentile = np.percentile(a,percentile)
+    plt.hist(a,bins=3000,range=(a.min(),a_percentile))
+    plt.title(f"{title} {percentile*100}th percentile \n Avg: {np.average(a)}")
+    plt.ylim(top=300)
 
     plt.ylabel("Count")
     plt.xlabel("Density")
     #plt.xlim(left=0, right=10000)
-    plt.savefig(f"{file_destination}_{title}_zoomed.png",dpi=400)
+    plt.savefig(f"{file_destination}\{title}_{percentile*100}th percentile.png",dpi=400)
+
+    plt.clf()
+
+    percentile = 0.9999
+    a_percentile = np.quantile(a,percentile)
+    plt.hist(a,bins=3000,range=(np.min(a),a_percentile))
+    plt.title(f"{title}{percentile*100}th percentile \n Avg: {np.average(a)}")
+    plt.ylim(top=300)
+
+    plt.ylabel("Count")
+    plt.xlabel("Density")
+    #plt.xlim(left=0, right=10000)
+    plt.savefig(f"{file_destination}\{title}_{percentile*100}th percentile.png",dpi=400)
+
     return hist
         
