@@ -51,6 +51,8 @@ def display_histogram_of_densities(densities,file_destination,title="Density"):
             file_destination.mkdir(parents=True)
     a = np.array(densities)
     a = densities.reshape((-1))
+
+    plt.clf()
     hist = plt.hist(a, bins=300)  # arguments are passed to np.histogram
     #plt.show()
     plt.title(f"{title} \n Avg: {np.average(a)}")
@@ -61,7 +63,7 @@ def display_histogram_of_densities(densities,file_destination,title="Density"):
     plt.ylim(top=300)
     plt.savefig(f"{file_destination}\{title}_Shrunk.png",dpi=400)
     plt.clf()
-
+ 
     percentile = 0.95
     a_percentile = np.percentile(a,percentile)
     plt.hist(a,bins=3000,range=(a.min(),a_percentile))

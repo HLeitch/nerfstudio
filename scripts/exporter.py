@@ -616,7 +616,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
             output_densities = outputs[FieldHeadNames.DENSITY]
             densest_in_ray = output_densities.argmax(1)
-            ray_comp_histogram = display_histogram_of_densities(densest_in_ray.cpu(),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
+            ray_comp_histogram = display_histogram_of_densities(np.array(output_densities.max(1)[0].cpu()),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
 
             # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
 
