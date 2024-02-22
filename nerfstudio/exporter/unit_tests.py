@@ -65,9 +65,9 @@ def display_histogram_of_densities(densities,file_destination,title="Density"):
     plt.savefig(f"{file_destination}\{title}_Shrunk.png",dpi=400)
     plt.clf()
  
-    percentile = 0.95
+    percentile = 0.99
     a_percentile = np.quantile(a,percentile)
-    plt.hist(a,bins=3000,range=(a.min(),a_percentile))
+    plt.hist(a,bins=3000,range=(np.min(a),a_percentile))
     plt.axvline(a.mean(),color = 'black', linestyle='dashed',linewidth=1)
     plt.title(f"{title} {percentile*100}th percentile \n Avg: {np.average(a)}")
     plt.ylim(top=300)
@@ -80,8 +80,8 @@ def display_histogram_of_densities(densities,file_destination,title="Density"):
     plt.clf()
 
     percentile = 0.9999
-    a_percentile = np.quantile(a,percentile)
-    plt.hist(a,bins=3000,range=(np.min(a),a_percentile))
+    b_percentile = np.quantile(a,percentile)
+    plt.hist(a,bins=3000,range=(np.min(a),b_percentile))
     plt.axvline(a.mean(),color = 'black', linestyle='dashed',linewidth=1)
 
     plt.title(f"{title}_{percentile*100}th percentile \n Avg: {np.average(a)}")

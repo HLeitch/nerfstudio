@@ -485,9 +485,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         histogram =  np.histogram(densities_flat)
         tb_file.add_text(f"Density" ,f"Average: {np.average(densities)}, Max: {np.amax(densities)}, Min: {np.amin(densities)}")
         dense_histogram = display_histogram_of_densities(densities,self.output_dir,f"First_pass_{self.output_file_name[0:-4]}")
-        ##tb_file.add_figure("firstPass Density",histogram)
-        # Create histogram of the densities of the originally sampled points.
-        ##tb_file.add_histogram("First Pass",densities_flat,global_step=0,bins='tensorflow',max_bins=100)
+
         dense_Avg = np.average(densities)
         torch.cuda.empty_cache()
         ##distance is 5% of the avg range of bounding box
@@ -529,7 +527,9 @@ class ExportSamuraiMarchingCubes(Exporter):
             f"After points sampled from mesh: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()} gpu mem allocated"
         )
         torch.cuda.empty_cache()
-        o3dvis.draw(pcd)
+        
+        ##o3dvis.draw(pcd,show_ui=False)
+
         pcd_pos = np.asarray(pcd.points).astype(np.float32)  # N, 3
         pcd_norms = np.asarray(pcd.normals).astype(np.float32)  # N, 3
 
@@ -542,7 +542,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         colours = []
         counter = 0
         chunk_size = 1048576 ##262144  # 65536 ##2^16
-        ray_samples = 8
+        ray_samples = 20
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
         coloursToUse = [
@@ -614,7 +614,11 @@ class ExportSamuraiMarchingCubes(Exporter):
             )
             print(f"Memory Usage: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
+
+            ##outputs = pipeline.model.field.density_fn(spaced_points.cuda())
             output_densities = outputs[FieldHeadNames.DENSITY]
+
+           
             densest_in_ray = output_densities.argmax(1)
             ray_comp_histogram = display_histogram_of_densities(np.array(output_densities.max(1)[0].cpu()),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
 
