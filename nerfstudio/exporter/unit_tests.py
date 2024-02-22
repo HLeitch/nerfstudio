@@ -88,5 +88,16 @@ def display_histogram_of_densities(densities,file_destination,title="Density"):
     #plt.xlim(left=0, right=10000)
     plt.savefig(f"{file_destination}\{title}_{percentile*100}th percentile.png",dpi=400)
 
+    plt.clf()
+
+    plt.hist(a,bins=100,range=(np.min(a),100))
+    plt.title(f"{title} Range 100 \n Avg: {np.average(a)}")
+    plt.ylim(top=3000)
+
+    plt.ylabel("Count")
+    plt.xlabel("Density")
+    #plt.xlim(left=0, right=10000)
+    plt.savefig(f"{file_destination}\{title}_Range_100.png",dpi=400)
+
     return hist
         
