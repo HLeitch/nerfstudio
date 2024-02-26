@@ -1,16 +1,17 @@
 
 import os as os
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas
 import point_cloud_utils as pcu
 import pytorch3d as torch3d
 import pytorch3d.io as torchio
 import pytorch3d.ops as torchops
-from pytorch3d.structures import Pointclouds
 import torch as torch
-import pandas
-import time
+from pytorch3d.structures import Pointclouds
+
 
 def IterationTest(file_a, file_b, num_points):
     print(f"Test for quality of relocation for {num_points} points")
@@ -20,37 +21,41 @@ def IterationTest(file_a, file_b, num_points):
     a = pcu.load_mesh_v(file_a)
     b = pcu.load_mesh_v(file_b)
     
+        ##Moving both sets of points to the origin.
+    avg_a = np.mean(a,0)
+    avg_b = np.mean(b,0)
     
+    print(f"{avg_a}, {avg_b}")
+    a = a - avg_a
+    b = b - avg_b
+    
+    # print(f"{np.mean(a,0)}, {np.mean(b,0)}")
     
     
     a_tensor_full = torch.tensor(a,dtype=torch.float)
     b_tensor_full = torch.tensor(b,dtype=torch.float)
 
     
-    randomPointsA = torch.randperm(a_tensor_full.shape[0])
-    randomPointsB = torch.randperm(b_tensor_full.shape[0])
-    
+    # randomPointsA = torch.randperm(a_tensor_full.shape[0])
+    # randomPointsB = torch.randperm(b_tensor_full.shape[0])
+
+    pointsA = torchops.sample_farthest_points(a_tensor_full,K=num_points)[0]
+    pointsB = torchops.sample_farthest_points(b_tensor_full,K=num_points)[0]
+
+
     ##randomly select a number of points 
-    a_tensor = a_tensor_full[randomPointsA]
-    b_tensor = b_tensor_full[randomPointsB]
+    # a_tensor = a_tensor_full[randomPointsA]
+    # b_tensor = b_tensor_full[randomPointsB]
     
-    a_tensor = a_tensor[:num_points][None,:,:]
-    b_tensor = b_tensor[:num_points][None,:,:]
+    # a_tensor = a_tensor[:num_points][None,:,:]
+    # b_tensor = b_tensor[:num_points][None,:,:]
     
     print(f"{a_tensor.shape}")
     #result = 
     
     # %%
     
-    # Moving both sets of points to the origin.
-    # avg_a = np.mean(a_tensor.numpy(),0)
-    # avg_b = np.mean(b_tensor.numpy(),0)
-    
-    # print(f"{avg_a}, {avg_b}")
-    # a = avg_a
-    # b = avg_b
-    
-    # print(f"{np.mean(a,0)}, {np.mean(b,0)}")
+
     fig = plt.figure()  
     ax = fig.add_subplot(111,projection="3d")
     
@@ -61,24 +66,25 @@ def IterationTest(file_a, file_b, num_points):
     ax.set_zlabel('Z Label')
     
     
-    plt.show()
+    ##plt.show()
     #%%
     
-    a_pc = Pointclouds(a_tensor)
-    b_pc = Pointclouds(b_tensor)
+    a_pc = Pointclouds(pointsA)
+    b_pc = Pointclouds(pointsB)
     a_full_pc = Pointclouds(a_tensor_full[None,:,:])
     b_full_pc = Pointclouds(b_tensor_full[None,:,:])
     #%%
     
-    output = torchops.iterative_closest_point(a_pc, b_pc,verbose=True,max_iterations=500, relative_rmse_thr=1e-7)
+    output = torchops.iterative_closest_point(a_pc, b_pc,verbose=True,max_iterations=500, relative_rmse_thr=1e-9)
+
     rmse = output.rmse
     transformed_a = output.Xt
     RTs = output.RTs
     time_taken = time.time() - time_start
-    print(time_taken)
+    print(f"time taken {time_taken}")
     
     iterations_taken = output.t_history.__len__()
-    print(iterations_taken)
+    print(f"iterations_taken {iterations_taken}")
     
     ## reduced a points only
     small_a = transformed_a.points_padded()
@@ -138,10 +144,11 @@ def IterationTest(file_a, file_b, num_points):
 
     return rmse.cpu().numpy(), reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken
 #%%
+##Execute Testing of Hausdorff distanc function
 results = pandas.DataFrame([],columns=['num_points','rmse','ICP_hausdorff','Full_1D_hausdorff','Full_2D_hausdorff','time_taken','iterations'])
 
-for num_points in [100, 200, 500, 750, 1000, 1500, 2000, 5000, 7500, 10000, 15000, 20000]:
-    rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud.obj", num_points)
+for num_points in [2000]:#[100, 200, 500, 750, 1000, 1500, 2000, 5000, 7500, 10000, 15000, 20000]:
+    rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_shrank_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud_shrank.obj", num_points)
     ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud.obj", num_points)
     ##IterationTest("./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Ignatius/ignatius_base.obj",  num_points) ##IterationTest( "./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/Caterpillar/Caterpillar_base.obj", num_points)
     
