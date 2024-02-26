@@ -541,8 +541,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = []
         colours = []
         counter = 0
-        chunk_size = 1048576 ##262144  # 65536 ##2^16
-        ray_samples = 20
+        chunk_size = 1000000 ##262144  # 65536 ##2^16
+        ray_samples = 8
         samples_per_batch = chunk_size // ray_samples
         coloursCounter = 0
         coloursToUse = [
@@ -556,6 +556,8 @@ class ExportSamuraiMarchingCubes(Exporter):
             # [0.0, 0.0, 0.0],
         ]
         point_counter = 0
+
+        densest_vals = []
 
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
@@ -620,7 +622,6 @@ class ExportSamuraiMarchingCubes(Exporter):
 
            
             densest_in_ray = output_densities.argmax(1)
-            ray_comp_histogram = display_histogram_of_densities(np.array(output_densities.max(1)[0].cpu()),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
 
             # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
 
@@ -635,7 +636,12 @@ class ExportSamuraiMarchingCubes(Exporter):
             # debug_cloud.colors = colorv3d
             ##o3dvis.draw(debug_cloud)
 
-            
+            ###
+            ###Testing densities retrieved from second pass
+            densest_vals.append(output_densities.max(1)[0].reshape((-1)).cpu())
+            ###
+
+
             idx = 0
             colouridx = coloursCounter % len(coloursToUse)
             for d in densest_in_ray:
@@ -657,6 +663,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             e_time = time.time()
 
             print(f"Loop Time = {e_time - s_time}")
+        ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
 
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
