@@ -155,6 +155,8 @@ def IterationTest(file_a, file_b, num_points):
     ## full point clouds
     full_pc_comparison = 0##pcu.one_sided_hausdorff_distance(a_full_pc[0].cpu().numpy(), b_full_pc.points_padded().cpu().numpy()[0])
     
+    general_hausdorff = 0#pcu.hausdorff_distance(test_PCD[0].cpu().numpy(), gt_PCD.points_padded().cpu().numpy()[0]
+
     small_rmse = torch.sqrt(torch.mean(((small_a_pc - b_pc.points_padded())**2)))
     full_rmse = torch.sqrt(torch.mean(((a_full_pc[0] - b_full_pc.points_padded()[0])**2)))
     print(f"Reduced Hausdorff Reduced Data: {reduced_pc_comparison}")
@@ -164,21 +166,6 @@ def IterationTest(file_a, file_b, num_points):
     
     
     # %%
-    
-    # Take a max of the one sided squared  distances to get the two sided Hausdorff distance
-    general_hausdorff = 0##pcu.hausdorff_distance(a_full_pc[0].cpu().numpy(), b_full_pc.points_padded().cpu().numpy()[0])
-    
-    # # Find the index pairs of the two points with maximum shortest distancce
-    # hausdorff_b_to_a, idx_b, idx_a = pcu.one_sided_hausdorff_distance(b, transformed_a, return_index=True)
-    # assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_b_to_a**2) < 1e-5, "These values should be almost equal"
-    # print(f"Hausdorff shortest: {hausdorff_a_to_b}")
-    
-    
-    # # Find the index pairs of the two points with maximum shortest distancce
-    # hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(b, transformed_a, return_index=True)
-    # assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
-    # print(f"Hausdorff max: {hausdorff_a_to_b}")
-    
     ##Save rotated point cloud
     print(f"Saving Mesh to {file_a[:-4]+f'matched{num_points}.obj'}")
     pcu.save_mesh_v((file_a[:-4]+f"matched{num_points}.obj"), a_full_pc[0].cpu().numpy())
@@ -187,20 +174,37 @@ def IterationTest(file_a, file_b, num_points):
     print("######################MATCHING COMPLETE########################")
     return full_rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, 0#iterations_taken
 #%%
+def PCD_Comparison(test_PCD, gt_PCD):
+    general_hausdorff = pcu.hausdorff_distance(test_PCD[0].cpu().numpy(), gt_PCD.points_padded().cpu().numpy()[0])
+    
+    # Find the index pairs of the two points with maximum shortest distancce
+    hausdorff_b_to_a, idx_b, idx_a = pcu.one_sided_hausdorff_distance(gt_PCD, test_PCD, return_index=True)
+    assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_b_to_a**2) < 1e-5, "These values should be almost equal"
+    print(f"Hausdorff shortest: {hausdorff_a_to_b}")
+    
+    
+    # Find the index pairs of the two points with maximum shortest distancce
+    hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(gt_PCD, test_PCD, return_index=True)
+    assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
+    print(f"Hausdorff max: {hausdorff_a_to_b}")
+
+    ## root
+    full_rmse = torch.sqrt(torch.mean(((a_full_pc[0] - b_full_pc.points_padded()[0])**2)))
+    
 ##Execute Testing of Hausdorff distanc function
 results = pandas.DataFrame([],columns=['num_points','rmse','ICP_hausdorff','Full_1D_hausdorff','Full_2D_hausdorff','time_taken','iterations'])
 
 test_obj = ["./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj","./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/chair/chair_RotatedPC.obj"]
 GT_obj  = ["./data/nerf-synthetic/lego/lego_pointcloud.obj","./data/tandt/Ignatius/ignatius_base.obj","./data/tandt/Caterpillar/Caterpillar_base.obj","./data/tandt/chair/chair_BasePC.obj"]
 for test,GT in zip(test_obj,GT_obj):
-    for num_points in [100, 200, 1000,5000,7500]:
+    for num_points in [200, 1000,5000]:
         rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest(test, GT, num_points)
         ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud.obj", num_points)
         ##IterationTest("./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Ignatius/ignatius_base.obj",  num_points) ##IterationTest( "./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/Caterpillar/Caterpillar_base.obj", num_points)
         ##IterationTest("./data/tandt/chair/chair_BasePC.obj","./data/tandt/chair/chair_RotatedPC.obj",  num_points)
         
         ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_shrank_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud_shrank.obj", num_points)
-        new_row = {'Name':test_obj, 'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff, 'time_taken': time_taken, 'iterations': iterations_taken}
+        new_row = {'Name':test, 'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff, 'time_taken': time_taken, 'iterations': iterations_taken}
         
         results = results.append(new_row,ignore_index=True)
     print(results.to_string())
