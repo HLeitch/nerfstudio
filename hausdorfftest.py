@@ -12,9 +12,13 @@ import pytorch3d.io as torchio
 import pytorch3d.ops as torchops
 import torch as torch
 from pytorch3d.structures import Pointclouds
+from torch.utils.tensorboard import SummaryWriter
 
 
-def IterationTest(file_a, file_b, num_points):
+def IterationTest(file_a, file_b, num_points, tb_file: SummaryWriter):
+
+    tb_file.add_text("Test File",file_a)
+    tb_file.add_text("GT File", file_b)
     print(f"Test for quality of relocation for {num_points} points")
     time_start = time.time()
     
@@ -54,8 +58,9 @@ def IterationTest(file_a, file_b, num_points):
     a_tensor = a_tensor_full[randomPointsA]
     b_tensor = b_tensor_full[randomPointsB]
     
-    a_tensor = a_tensor[:100000][None,:,:]
-    b_tensor = b_tensor[:100000][None,:,:]
+    ##_full added to subject to explore how changing num of points changes results
+    a_tensor_full = a_tensor[:500000]#[None,:,:]
+    b_tensor_full = b_tensor[:500000]#[None,:,:]
 
     ##just for testing correspondance
     # pointsA = torchops.sample_farthest_points(a_tensor,K=num_points)[0]
@@ -63,16 +68,17 @@ def IterationTest(file_a, file_b, num_points):
 
     ##sampling comparison scatter plot
 
-    # fig = plt.figure()  
-    # ax = fig.add_subplot(111,projection="3d")
+    fig = plt.figure()  
+    ax = fig.add_subplot(111,projection="3d")
+    fig.suptitle("Pre-Alignment Point Cloud Comparison")
     
-    # furthest_points = ax.scatter(pointsA[0,:,0]+0.05,pointsA[0,:,1],pointsA[0,:,2],marker=".",label="Rotated Points")
-    # random_points = ax.scatter(pointsB[0,:,0],pointsB[0,:,1],pointsB[0,:,2],marker=".",color="r",label="Base Points")
-    # ax.legend(handles=[furthest_points,random_points])
-    # ax.set_xlabel('X Label')
-    # ax.set_ylabel('Y Label')
-    # ax.set_zlabel('Z Label')
-    # plt.show()
+    furthest_points = ax.scatter(pointsA[0,:,0]+0.05,pointsA[0,:,1],pointsA[0,:,2],marker=".",label="Test Points",s=0.001)
+    random_points = ax.scatter(pointsB[0,:,0],pointsB[0,:,1],pointsB[0,:,2],marker="s",color="r",label="GT Points",s=0.001)
+    ax.legend(handles=[furthest_points,random_points])
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
+    tb_file.add_figure("Unaligned Cloud",fig,num_points)
     # print(f"{a_tensor.shape}")
     # #result = 
     
@@ -108,22 +114,26 @@ def IterationTest(file_a, file_b, num_points):
     time_taken = time.time() - time_start
     print(f"time taken {time_taken}")
 
-    ##iterations_taken = output.t_history.__len__()
+    iterations_taken = output.t_history.__len__()
+    tb_file.add_scalar("Iterations Taken",iterations_taken,num_points)
+
     ##print(f"iterations_taken {iterations_taken}")
     
     ## reduced a points only
     small_a_pc = RTs.s[:,None,None] * torch.bmm(a_pc.points_padded(), RTs.R) + RTs.T[:,None,:]
     
-    # fig = plt.figure()  
-    # ax = fig.add_subplot(111,projection="3d")
+    fig = plt.figure()  
+    ax = fig.add_subplot(111,projection="3d")
+    fig.suptitle("Aligned Point Cloud Comparison")
     
-    # furthest_points = ax.scatter(small_a_pc[0,:,0],small_a_pc[0,:,1],small_a_pc[0,:,2],marker=".",label="Rotated Points")
-    # random_points = ax.scatter(pointsB[0,:,0],pointsB[0,:,1],pointsB[0,:,2],marker=".",color="r",label="Base Points")
-    # ax.legend(handles=[furthest_points,random_points])
-    # ax.set_xlabel('X Label')
-    # ax.set_ylabel('Y Label')
-    # ax.set_zlabel('Z Label')
-    # plt.show()
+    furthest_points = ax.scatter(small_a_pc[0,:,0],small_a_pc[0,:,1],small_a_pc[0,:,2],marker=".",label="Rotated Points",s=0.001)
+    random_points = ax.scatter(pointsB[0,:,0],pointsB[0,:,1],pointsB[0,:,2],marker="s",color="r",label="Base Points",s=0.001)
+    ax.legend(handles=[furthest_points,random_points])
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
+    tb_file.add_figure("Aligned Cloud",fig,num_points)
+
 
     ##Applying similarity transform(taken from ICP code from function above.)
     a_full_pc = RTs.s[:,None,None] * torch.bmm(a_full_pc.points_padded(), RTs.R) + RTs.T[:,None,:]
@@ -169,36 +179,52 @@ def IterationTest(file_a, file_b, num_points):
     ##Save rotated point cloud
     print(f"Saving Mesh to {file_a[:-4]+f'matched{num_points}.obj'}")
     pcu.save_mesh_v((file_a[:-4]+f"matched{num_points}.obj"), a_full_pc[0].cpu().numpy())
+    PCD_Comparison(a_full_pc,b_full_pc,tb_file=tb_file)
 
     ##rmse.cpu().numpy()
     print("######################MATCHING COMPLETE########################")
-    return full_rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, 0#iterations_taken
+    time_taken = time.time() - time_start
+    tb_file.add_scalar("Time Taken",time_taken,num_points)
+    return full_rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken
 #%%
-def PCD_Comparison(test_PCD, gt_PCD):
+def PCD_Comparison(test_PCD, gt_PCD, tb_file: SummaryWriter):
     general_hausdorff = pcu.hausdorff_distance(test_PCD[0].cpu().numpy(), gt_PCD.points_padded().cpu().numpy()[0])
+    tb_file.add_scalar("General Hausdorff",general_hausdorff,num_points)
     
     # Find the index pairs of the two points with maximum shortest distancce
-    hausdorff_b_to_a, idx_b, idx_a = pcu.one_sided_hausdorff_distance(gt_PCD, test_PCD, return_index=True)
-    assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_b_to_a**2) < 1e-5, "These values should be almost equal"
-    print(f"Hausdorff shortest: {hausdorff_a_to_b}")
+    hausdorff_b_to_a, idx_b, idx_a = pcu.one_sided_hausdorff_distance(test_PCD[0].cpu().numpy(), gt_PCD.points_padded().cpu().numpy()[0], return_index=True)
+    #assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_b_to_a**2) < 1e-5, "These values should be almost equal"
+    print(f"Hausdorff shortest: {hausdorff_b_to_a}")
+    tb_file.add_scalar("Shortest from GT to Test",hausdorff_b_to_a,num_points)
     
     
     # Find the index pairs of the two points with maximum shortest distancce
-    hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(gt_PCD, test_PCD, return_index=True)
-    assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
-    print(f"Hausdorff max: {hausdorff_a_to_b}")
+    hausdorff_dist, idx_b, idx_a = pcu.hausdorff_distance(test_PCD[0].cpu().numpy(), gt_PCD.points_padded().cpu().numpy()[0], return_index=True)
+    #assert np.abs(np.sum((a[idx_a] - b[idx_b])**2) - hausdorff_dist**2) < 1e-5, "These values should be almost equal"  
+    print(f"Hausdorff max: {hausdorff_dist}")
+    tb_file.add_scalar("Maximum Shortest Distance",hausdorff_dist,num_points)
+
 
     ## root
-    full_rmse = torch.sqrt(torch.mean(((a_full_pc[0] - b_full_pc.points_padded()[0])**2)))
+    full_rmse = torch.sqrt(torch.mean(((test_PCD[0] - gt_PCD.points_padded()[0])**2)))
+    tb_file.add_scalar("RMSE value",full_rmse,num_points)
+
+    chamfer_dist_output = pcu.chamfer_distance(test_PCD[0].cpu().numpy(), gt_PCD.points_padded().cpu().numpy()[0])
+    tb_file.add_scalar("Chamfer Distance",chamfer_dist_output,num_points)
     
 ##Execute Testing of Hausdorff distanc function
 results = pandas.DataFrame([],columns=['num_points','rmse','ICP_hausdorff','Full_1D_hausdorff','Full_2D_hausdorff','time_taken','iterations'])
 
-test_obj = ["./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj","./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/chair/chair_RotatedPC.obj"]
-GT_obj  = ["./data/nerf-synthetic/lego/lego_pointcloud.obj","./data/tandt/Ignatius/ignatius_base.obj","./data/tandt/Caterpillar/Caterpillar_base.obj","./data/tandt/chair/chair_BasePC.obj"]
+test_obj = ["./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj","./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/nerf-synthetic/chair/chair_RotatedPC.obj"]
+GT_obj  = ["./data/nerf-synthetic/lego/lego_pointcloud.obj","./data/tandt/Ignatius/ignatius_base.obj","./data/tandt/Caterpillar/Caterpillar_base.obj","./data/nerf-synthetic/chair/chair_BasePC.obj"]
+
+# test_obj = ["./data/nerf-synthetic/chair/chair_RotatedPC.obj"]
+# GT_obj = ["./data/nerf-synthetic/chair/chair_BasePC.obj"]
+
 for test,GT in zip(test_obj,GT_obj):
     for num_points in [200, 1000,5000]:
-        rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest(test, GT, num_points)
+        tb_file  = SummaryWriter(f"Mesh_Analysis_Test/500Thous/{test.split(sep='/')[-1]}")
+        rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest(test, GT, num_points,tb_file=tb_file)
         ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud.obj", num_points)
         ##IterationTest("./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Ignatius/ignatius_base.obj",  num_points) ##IterationTest( "./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/Caterpillar/Caterpillar_base.obj", num_points)
         ##IterationTest("./data/tandt/chair/chair_BasePC.obj","./data/tandt/chair/chair_RotatedPC.obj",  num_points)
@@ -208,4 +234,5 @@ for test,GT in zip(test_obj,GT_obj):
         
         results = results.append(new_row,ignore_index=True)
     print(results.to_string())
-        
+print(results.to_string())
+
