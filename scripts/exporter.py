@@ -484,7 +484,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         histogram =  np.histogram(densities_flat)
         tb_file.add_text(f"Density" ,f"Average: {np.average(densities)}, Max: {np.amax(densities)}, Min: {np.amin(densities)}")
-        dense_histogram = display_histogram_of_densities(densities,self.output_dir,f"First_pass_{self.output_file_name[0:-4]}")
+        ##dense_histogram = display_histogram_of_densities(densities,self.output_dir,f"First_pass_{self.output_file_name[0:-4]}")
 
         dense_Avg = np.average(densities)
         torch.cuda.empty_cache()
@@ -663,7 +663,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             e_time = time.time()
 
             print(f"Loop Time = {e_time - s_time}")
-        ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
+        ##ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
 
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
@@ -718,7 +718,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_165440/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.013000000000000067 -0.24700000000000005 -0.15000000000000002 --bounding-box-max 0.3430000000000001 0.08299999999999998 0.18000000000000005 --num-samples-mc 250
 
         for x in {8}:#{6,7,8,9}:
-            for p in {0.05}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
+            for p in {0.01}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
                 CONSOLE.print("Computing Mesh... this may take a while.")
                 mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
                 vertices_to_remove = densities < np.quantile(densities, p)
@@ -742,11 +742,11 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         CONSOLE.print(f"[bold green]:white_check_mark: Generated Marching Cube representation!!")
 
-        # if self.save_mesh:
-        #     ##Other programs for model veiwing read from 1. Python indexes from 0
-        #     facesReindex = faces + 1
+        if self.save_mesh:
+            ##Other programs for model veiwing read from 1. Python indexes from 0
+            facesReindex = faces + 1
 
-        #     mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
+            mcUtils.save_obj(verts, normals, facesReindex, self.output_dir, self.output_file_name)
 
 
 @dataclass

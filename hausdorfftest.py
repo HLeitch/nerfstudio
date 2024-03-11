@@ -15,7 +15,7 @@ from pytorch3d.structures import Pointclouds
 from torch.utils.tensorboard import SummaryWriter
 
 
-def IterationTest(file_a, file_b, num_points, tb_file: SummaryWriter):
+def IterationTest(file_a, file_b, num_points, comparison_points, tb_file: SummaryWriter):
 
     tb_file.add_text("Test File",file_a)
     tb_file.add_text("GT File", file_b)
@@ -59,8 +59,8 @@ def IterationTest(file_a, file_b, num_points, tb_file: SummaryWriter):
     b_tensor = b_tensor_full[randomPointsB]
     
     ##_full added to subject to explore how changing num of points changes results
-    a_tensor_full = a_tensor[:500000]#[None,:,:]
-    b_tensor_full = b_tensor[:500000]#[None,:,:]
+    a_tensor_full = a_tensor[:comparison_points]#[None,:,:]
+    b_tensor_full = b_tensor[:comparison_points]#[None,:,:]
 
     ##just for testing correspondance
     # pointsA = torchops.sample_farthest_points(a_tensor,K=num_points)[0]
@@ -126,8 +126,8 @@ def IterationTest(file_a, file_b, num_points, tb_file: SummaryWriter):
     ax = fig.add_subplot(111,projection="3d")
     fig.suptitle("Aligned Point Cloud Comparison")
     
-    furthest_points = ax.scatter(small_a_pc[0,:,0],small_a_pc[0,:,1],small_a_pc[0,:,2],marker=".",label="Rotated Points",s=0.001)
-    random_points = ax.scatter(pointsB[0,:,0],pointsB[0,:,1],pointsB[0,:,2],marker="s",color="r",label="Base Points",s=0.001)
+    furthest_points = ax.scatter(small_a_pc[0,:,0],small_a_pc[0,:,1],small_a_pc[0,:,2],marker=".",label="Rotated Points")
+    random_points = ax.scatter(pointsB[0,:,0],pointsB[0,:,1],pointsB[0,:,2],marker="s",color="r",label="Base Points")
     ax.legend(handles=[furthest_points,random_points])
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
@@ -178,7 +178,7 @@ def IterationTest(file_a, file_b, num_points, tb_file: SummaryWriter):
     # %%
     ##Save rotated point cloud
     print(f"Saving Mesh to {file_a[:-4]+f'matched{num_points}.obj'}")
-    pcu.save_mesh_v((file_a[:-4]+f"matched{num_points}.obj"), a_full_pc[0].cpu().numpy())
+    ##pcu.save_mesh_v((file_a[:-4]+f"matched{num_points}.obj"), a_full_pc[0].cpu().numpy())
     PCD_Comparison(a_full_pc,b_full_pc,tb_file=tb_file)
 
     ##rmse.cpu().numpy()
@@ -223,16 +223,17 @@ GT_obj  = ["./data/nerf-synthetic/lego/lego_pointcloud.obj","./data/tandt/Ignati
 
 for test,GT in zip(test_obj,GT_obj):
     for num_points in [200, 1000,5000]:
-        tb_file  = SummaryWriter(f"Mesh_Analysis_Test/500Thous/{test.split(sep='/')[-1]}")
-        rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest(test, GT, num_points,tb_file=tb_file)
-        ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud.obj", num_points)
-        ##IterationTest("./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Ignatius/ignatius_base.obj",  num_points) ##IterationTest( "./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/Caterpillar/Caterpillar_base.obj", num_points)
-        ##IterationTest("./data/tandt/chair/chair_BasePC.obj","./data/tandt/chair/chair_RotatedPC.obj",  num_points)
-        
-        ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_shrank_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud_shrank.obj", num_points)
-        new_row = {'Name':test, 'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff, 'time_taken': time_taken, 'iterations': iterations_taken}
-        
-        results = results.append(new_row,ignore_index=True)
+        for comp_points in [5000,10000,25000,50000,100000,200000,500000]:
+            tb_file  = SummaryWriter(f"Mesh_Analysis_Test/Comp_points/{test.split(sep='/')[-1]}_{comp_points}")
+            rmse, reduced_pc_comparison, full_pc_comparison, general_hausdorff, time_taken, iterations_taken = IterationTest(test, GT, num_points,comp_points,tb_file=tb_file)
+            ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud.obj", num_points)
+            ##IterationTest("./data/tandt/Ignatius/Ignatius_z_rot.obj","./data/tandt/Ignatius/ignatius_base.obj",  num_points) ##IterationTest( "./data/tandt/Caterpillar/Caterpillar_shifted.obj","./data/tandt/Caterpillar/Caterpillar_base.obj", num_points)
+            ##IterationTest("./data/tandt/chair/chair_BasePC.obj","./data/tandt/chair/chair_RotatedPC.obj",  num_points)
+            
+            ##IterationTest( "./data/nerf-synthetic/lego/lego_pointcloud_shrank_rotated.obj", "./data/nerf-synthetic/lego/lego_pointcloud_shrank.obj", num_points)
+            new_row = {'Name':test, 'num_points':num_points,'rmse':rmse, 'ICP_hausdorff':reduced_pc_comparison, 'Full_1D_hausdorff':full_pc_comparison, 'Full_2D_hausdorff':general_hausdorff, 'time_taken': time_taken, 'iterations': iterations_taken}
+            
+            results = results.append(new_row,ignore_index=True)
     print(results.to_string())
 print(results.to_string())
 
