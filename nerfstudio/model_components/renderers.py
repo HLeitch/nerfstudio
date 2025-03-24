@@ -26,8 +26,9 @@ Example:
     rgb = rgb_renderer(rgb=field_outputs[FieldHeadNames.RGB], weights=weights)
 
 """
+import contextlib
 import math
-from typing import Optional, Union
+from typing import Generator, Optional, Union
 
 import nerfacc
 import torch
@@ -36,7 +37,21 @@ from torchtyping import TensorType
 from typing_extensions import Literal
 
 from nerfstudio.cameras.rays import RaySamples
-from nerfstudio.utils.math import components_from_spherical_harmonics
+from nerfstudio.utils.math import components_from_spherical_harmonics, safe_normalize
+
+BACKGROUND_COLOR_OVERRIDE: Optional[TensorType[3]] = None
+
+
+@contextlib.contextmanager
+def background_color_override_context(mode: TensorType[3]) -> Generator[None, None, None]:
+    """Context manager for setting background mode."""
+    global BACKGROUND_COLOR_OVERRIDE  # pylint: disable=global-statement
+    old_background_color = BACKGROUND_COLOR_OVERRIDE
+    try:
+        BACKGROUND_COLOR_OVERRIDE = mode
+        yield
+    finally:
+        BACKGROUND_COLOR_OVERRIDE = old_background_color
 
 
 class RGBRenderer(nn.Module):
@@ -55,7 +70,7 @@ class RGBRenderer(nn.Module):
         cls,
         rgb: TensorType["bs":..., "num_samples", 3],
         weights: TensorType["bs":..., "num_samples", 1],
-        background_color: Union[Literal["random", "last_sample"], TensorType[3]] = "random",
+        background_color: Union[Literal["random", "black", "last_sample"], TensorType[3]] = "random",
         ray_indices: Optional[TensorType["num_samples"]] = None,
         num_rays: Optional[int] = None,
     ) -> TensorType["bs":..., 3]:
@@ -81,10 +96,14 @@ class RGBRenderer(nn.Module):
             comp_rgb = torch.sum(weights * rgb, dim=-2)
             accumulated_weight = torch.sum(weights, dim=-2)
 
+        if BACKGROUND_COLOR_OVERRIDE is not None:
+            background_color = BACKGROUND_COLOR_OVERRIDE
         if background_color == "last_sample":
             background_color = rgb[..., -1, :]
         if background_color == "random":
             background_color = torch.rand_like(comp_rgb).to(rgb.device)
+        if background_color == "black":
+            background_color = torch.zeros_like(comp_rgb).to(rgb.device)
 
         assert isinstance(background_color, torch.Tensor)
         comp_rgb = comp_rgb + background_color.to(weights.device) * (1.0 - accumulated_weight)
@@ -110,6 +129,8 @@ class RGBRenderer(nn.Module):
             Outputs of rgb values.
         """
 
+        if not self.training:
+            rgb = torch.nan_to_num(rgb)
         rgb = self.combine_rgb(
             rgb, weights, background_color=self.background_color, ray_indices=ray_indices, num_rays=num_rays
         )
@@ -163,7 +184,11 @@ class SHRenderer(nn.Module):
         if self.activation is not None:
             self.activation(rgb)
 
+        if not self.training:
+            rgb = torch.nan_to_num(rgb)
         rgb = RGBRenderer.combine_rgb(rgb, weights, background_color=self.background_color)
+        if not self.training:
+            torch.clamp_(rgb, min=0.0, max=1.0)
 
         return rgb
 
@@ -261,6 +286,134 @@ class DepthRenderer(nn.Module):
         raise NotImplementedError(f"Method {self.method} not implemented")
 
 
+class DepthRenderer16Percentile(nn.Module):
+    """Calculate depth along ray when density reaches 0.16.
+
+    Depth Method:
+        - median: Depth is set to the distance where the accumulated weight reaches 0.16.
+        - expected: Expected depth along ray. Same procedure as rendering rgb, but with depth.
+
+    Args:
+        method: Depth calculation method.
+    """
+
+    def __init__(self, method: Literal["median", "expected"] = "median") -> None:
+        super().__init__()
+        self.method = method
+
+    def forward(
+        self,
+        weights: TensorType[..., "num_samples", 1],
+        ray_samples: RaySamples,
+        ray_indices: Optional[TensorType["num_samples"]] = None,
+        num_rays: Optional[int] = None,
+    ) -> TensorType[..., 1]:
+        """Composite samples along ray and calculate depths.
+
+        Args:
+            weights: Weights for each sample.
+            ray_samples: Set of ray samples.
+            ray_indices: Ray index for each sample, used when samples are packed.
+            num_rays: Number of rays, used when samples are packed.
+
+        Returns:
+            Outputs of depth values.
+        """
+
+        if self.method == "median":
+            steps = (ray_samples.frustums.starts + ray_samples.frustums.ends) / 2
+
+            if ray_indices is not None and num_rays is not None:
+                raise NotImplementedError("Median depth calculation is not implemented for packed samples.")
+            cumulative_weights = torch.cumsum(weights[..., 0], dim=-1)  # [..., num_samples]
+            split = torch.ones((*weights.shape[:-2], 1), device=weights.device) * 0.16  # [..., 1]
+            median_index = torch.searchsorted(cumulative_weights, split, side="left")  # [..., 1]
+            median_index = torch.clamp(median_index, 0, steps.shape[-2] - 1)  # [..., 1]
+            median_depth = torch.gather(steps[..., 0], dim=-1, index=median_index)  # [..., 1]
+            return median_depth
+        if self.method == "expected":
+            eps = 1e-10
+            steps = (ray_samples.frustums.starts + ray_samples.frustums.ends) / 2
+
+            if ray_indices is not None and num_rays is not None:
+                # Necessary for packed samples from volumetric ray sampler
+                depth = nerfacc.accumulate_along_rays(weights, ray_indices, steps, num_rays)
+                accumulation = nerfacc.accumulate_along_rays(weights, ray_indices, None, num_rays)
+                depth = depth / (accumulation + eps)
+            else:
+                depth = torch.sum(weights * steps, dim=-2) / (torch.sum(weights, -2) + eps)
+
+            depth = torch.clip(depth, steps.min(), steps.max())
+
+            return depth
+
+        raise NotImplementedError(f"Method {self.method} not implemented")
+
+
+class DepthRenderer84Percentile(nn.Module):
+    """Calculate depth along ray when density reaches 0.84.
+
+    Depth Method:
+        - median: Depth is set to the distance where the accumulated weight reaches 0.84.
+        - expected: Expected depth along ray. Same procedure as rendering rgb, but with depth.
+
+    Args:
+        method: Depth calculation method.
+    """
+
+    def __init__(self, method: Literal["median", "expected"] = "median") -> None:
+        super().__init__()
+        self.method = method
+
+    def forward(
+        self,
+        weights: TensorType[..., "num_samples", 1],
+        ray_samples: RaySamples,
+        ray_indices: Optional[TensorType["num_samples"]] = None,
+        num_rays: Optional[int] = None,
+    ) -> TensorType[..., 1]:
+        """Composite samples along ray and calculate depths.
+
+        Args:
+            weights: Weights for each sample.
+            ray_samples: Set of ray samples.
+            ray_indices: Ray index for each sample, used when samples are packed.
+            num_rays: Number of rays, used when samples are packed.
+
+        Returns:
+            Outputs of depth values.
+        """
+
+        if self.method == "median":
+            steps = (ray_samples.frustums.starts + ray_samples.frustums.ends) / 2
+
+            if ray_indices is not None and num_rays is not None:
+                raise NotImplementedError("Median depth calculation is not implemented for packed samples.")
+            cumulative_weights = torch.cumsum(weights[..., 0], dim=-1)  # [..., num_samples]
+            split = torch.ones((*weights.shape[:-2], 1), device=weights.device) * 0.84  # [..., 1]
+            median_index = torch.searchsorted(cumulative_weights, split, side="left")  # [..., 1]
+            median_index = torch.clamp(median_index, 0, steps.shape[-2] - 1)  # [..., 1]
+            median_depth = torch.gather(steps[..., 0], dim=-1, index=median_index)  # [..., 1]
+            return median_depth
+        if self.method == "expected":
+            eps = 1e-10
+            steps = (ray_samples.frustums.starts + ray_samples.frustums.ends) / 2
+
+            if ray_indices is not None and num_rays is not None:
+                # Necessary for packed samples from volumetric ray sampler
+                depth = nerfacc.accumulate_along_rays(weights, ray_indices, steps, num_rays)
+                accumulation = nerfacc.accumulate_along_rays(weights, ray_indices, None, num_rays)
+                depth = depth / (accumulation + eps)
+            else:
+                depth = torch.sum(weights * steps, dim=-2) / (torch.sum(weights, -2) + eps)
+
+            depth = torch.clip(depth, steps.min(), steps.max())
+
+            return depth
+
+        raise NotImplementedError(f"Method {self.method} not implemented")
+
+
 class UncertaintyRenderer(nn.Module):
     """Calculate uncertainty along the ray."""
 
@@ -303,7 +456,50 @@ class NormalsRenderer(nn.Module):
         cls,
         normals: TensorType["bs":..., "num_samples", 3],
         weights: TensorType["bs":..., "num_samples", 1],
+        normalize: bool = True,
     ) -> TensorType["bs":..., 3]:
-        """Calculate normals along the ray."""
+        """Calculate normals along the ray.
+
+        Args:
+            normals: Normals for each sample.
+            weights: Weights of each sample.
+            normalize: Normalize normals.
+        """
         n = torch.sum(weights * normals, dim=-2)
+        if normalize:
+            n = safe_normalize(n)
         return n
+
+
+class LambertianShadingRenderer(nn.Module):
+    """Calculate Lambertian shading."""
+
+    @classmethod
+    def forward(
+        cls,
+        rgb: TensorType["bs":..., 3],
+        normals: TensorType["bs":..., 3],
+        light_direction: TensorType["bs":..., 3],
+        shading_weight: float = 1.0,
+        detach_normals=True,
+    ):
+        """Calculate Lambertian shading.
+
+        Args:
+            rgb: Accumulated rgb along a ray.
+            normals: Accumulated normals along a ray.
+            light_direction: Direction of light source.
+            shading_weight: Lambertian shading (1.0) vs. ambient lighting (0.0) ratio
+            detach_normals: Detach normals from the computation graph when computing shading.
+
+        Returns:
+            Textureless Lambertian shading, Lambertian shading
+        """
+        if detach_normals:
+            normals = normals.detach()
+
+        lambertian = (1 - shading_weight) + shading_weight * (normals @ light_direction).clamp(min=0)
+        shaded = lambertian.unsqueeze(-1).repeat(1, 3)
+        shaded_albedo = rgb * lambertian.unsqueeze(-1)
+
+        return shaded, shaded_albedo

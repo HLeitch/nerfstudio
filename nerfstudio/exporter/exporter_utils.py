@@ -21,13 +21,15 @@ Export utils such as structs, point cloud generation, and rendering code.
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import open3d as o3d
 import pymeshlab
 import torch
+from matplotlib import pyplot as plt
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -39,8 +41,11 @@ from rich.progress import (
 from torchtyping import TensorType
 
 from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.configs.base_config import Config  # pylint: disable=unused-import
-from nerfstudio.pipelines.base_pipeline import Pipeline
+from nerfstudio.cameras.rays import Frustums, RayBundle, RaySamples
+from nerfstudio.data.datasets.base_dataset import InputDataset
+from nerfstudio.data.scene_box import SceneBox
+from nerfstudio.field_components.field_heads import FieldHeadNames
+from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.rich_utils import ItersPerSecColumn
 
 CONSOLE = Console(width=120)
@@ -204,6 +209,125 @@ def generate_point_cloud(
     return pcd
 
 
+@torch.no_grad()
+def density_sampler(
+    pipeline: Pipeline,
+    num_samples: int = 100,
+    remove_outliers: bool = True,
+    estimate_normals: bool = False,
+    rgb_output_name: str = "rgb",
+    depth_output_name: str = "depth",
+    use_bounding_box: bool = True,
+    bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
+    bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+) -> o3d.geometry.PointCloud:
+    """Sample the density of a scene at num_samples interval per axis.
+
+    Args:
+        pipeline: Pipeline to evaluate with.
+        num_points: Number of points to generate. May result in less if outlier removal is used.
+        remove_outliers: Whether to remove outliers.
+        estimate_normals: Whether to estimate normals.
+        rgb_output_name: Name of the RGB output.
+        depth_output_name: Name of the depth output.
+        use_bounding_box: Whether to use a bounding box to sample points.
+        bounding_box_min: Minimum of the bounding box.
+        bounding_box_max: Maximum of the bounding box.
+
+    Returns:
+        Point cloud.
+    """
+
+    # pylint: disable=too-many-statements
+
+    progress = Progress(
+        TextColumn(":cloud: Computing Point Cloud :cloud:"),
+        BarColumn(),
+        TaskProgressColumn(show_speed=True),
+        TimeRemainingColumn(elapsed_when_finished=True, compact=True),
+    )
+    points = []
+    rgbs = []
+    normals = []
+
+    input_num_samples = num_samples
+
+    # marchingcubes needs a 3d numpy array.
+    # To work out the dimensions of the cube needed, find the dims, then get unit dims and multiply by densities.numel
+    # Num samples is used as a guide, the number of points is actually calculated by the closest whole number
+    # in order to prevent array trouble. e.g. if the bounding box is 125.3 x 125.3 x 125.3 points long, the num of points sampled
+    # will be 126 x 126 x 126.
+    bounding_box_truesize = tuple(map(lambda i, j: i - j, bounding_box_max, bounding_box_min))
+    sum_bb_dims = sum(bounding_box_truesize)
+    bounding_box_unitsize = tuple(map(lambda i: i / sum_bb_dims, bounding_box_truesize))
+
+    ##Axis changed to y-up. Converted dimensions from here on
+    xaxis, zaxis, yaxis = bounding_box_unitsize
+
+    dimension_const_cubed = (num_samples**3) / (xaxis * yaxis * zaxis)
+
+    dimension_const = dimension_const_cubed ** (1.0 / 3.0)
+
+    density_array_dims = tuple(map(lambda i: i * dimension_const, bounding_box_unitsize))
+
+    print(density_array_dims)
+
+    dimX, dimZ, dimY = density_array_dims
+
+    int_dens_array_dims = (int(dimX + 1), int(dimY + 1), int(dimZ + 1))
+
+    num_samples = int_dens_array_dims[0] * int_dens_array_dims[1] * int_dens_array_dims[2]
+
+    print(f"Sampling {num_samples} points")
+    ##Iterate over all 3 dimensions to create lots of points. Then sample the density at each and to give the density at equally sampled locations
+
+    pointCoords = torch.tensor(())
+    outputs = []
+
+    xPointDelta = (bounding_box_max[0] - bounding_box_min[0]) / int_dens_array_dims[0]
+    yPointDelta = (bounding_box_max[2] - bounding_box_min[2]) / int_dens_array_dims[1]
+    zPointDelta = (bounding_box_max[1] - bounding_box_min[1]) / int_dens_array_dims[2]
+
+    k = 0
+    while k < int_dens_array_dims[2]:
+        j = 0
+        while j < int_dens_array_dims[1]:
+            i = 0
+            while i < int_dens_array_dims[0]:
+
+                ##Axis trickery to output in correct axis
+                coord = [
+                    (i * xPointDelta) + bounding_box_min[0],
+                    bounding_box_max[1] - (k * zPointDelta),
+                    (j * yPointDelta) + bounding_box_min[2],
+                ]
+
+                outputs.append(coord)
+
+                i += 1
+            j += 1
+        k += 1
+    pointCoords = torch.tensor(outputs)
+
+    pointTens = torch.tensor(pointCoords).cuda()
+    print(np.shape(pointTens))
+
+    densities = pipeline.model.field.density_fn(pointTens)
+
+    ##remap densities to scale between 0 and 1
+
+    ##print(f"Test Density: {pipeline.model.field.density_fn(pointTens)}")
+
+    cpuDensity = densities.cpu().detach().numpy()
+    print(cpuDensity)
+
+    ##order='F' Fortran-Like ordering. Indexes differently, this fixes problems with not square Bounding Boxes
+    mc_density = np.reshape(cpuDensity, int_dens_array_dims, order="F")
+
+    ##print(mc_density)
+    return mc_density
+
+
 def render_trajectory(
     pipeline: Pipeline,
     cameras: Cameras,
@@ -254,5 +378,178 @@ def render_trajectory(
                 CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
                 sys.exit(1)
             images.append(outputs[rgb_output_name].cpu().numpy())
+
+            print(f" {outputs[rgb_output_name].shape}")
+
+            plt.imshow(outputs[rgb_output_name].cpu().numpy())
+            plt.show()
+
             depths.append(outputs[depth_output_name].cpu().numpy())
     return images, depths
+
+def render_trajectory_tri_tsdf(
+    pipeline: Pipeline,
+    cameras: Cameras,
+    rgb_output_name: str,
+    surface_depth_output_name: str,
+    outside_depth_output_name: str,
+    inside_depth_output_name: str,
+    rendered_resolution_scaling_factor: float = 1.0,
+    disable_distortion: bool = False,
+    use_aabb: bool = False,
+    bounding_box_min: Tuple[float, float, float] = (-1, -1, -1),
+    bounding_box_max: Tuple[float, float, float] = (1, 1, 1)
+
+) -> Tuple[List[np.ndarray], List[np.ndarray],List[np.ndarray], List[np.ndarray], List[np.ndarray],List[np.ndarray],List[np.ndarray]]:
+    """Helper function to create a video of a trajectory.
+    Args:
+        pipeline: Pipeline to evaluate with.
+        cameras: Cameras to render.
+        rgb_output_name: Name of the RGB output.
+        depth_output_name: Name of the depth output.
+        rendered_resolution_scaling_factor: Scaling factor to apply to the camera image resolution.
+        disable_distortion: Whether to disable distortion.
+
+    Returns:
+        List of rgb images, list of depth images.
+    """
+    images = []
+    depths_surface = []
+    depths_outside = []
+    depths_inside = []
+    surface_normals = []
+    ray_origins = []
+    ray_directions = []
+    ray_cam_ind = []
+
+    cameras.rescale_output_resolution(rendered_resolution_scaling_factor)
+
+    progress = Progress(
+        TextColumn(":cloud: Computing rgb and depth images :cloud:"),
+        BarColumn(),
+        TaskProgressColumn(show_speed=True),
+        ItersPerSecColumn(suffix="fps"),
+        TimeRemainingColumn(elapsed_when_finished=True, compact=True),
+    )
+    with progress:
+        for camera_idx in progress.track(range(cameras.size), description=""):
+            if use_aabb:
+                aabbbox = torch.zeros([2,3])
+                aabbbox[0] = torch.tensor(bounding_box_min)
+                aabbbox[1] = torch.tensor(bounding_box_max)
+                camera_ray_bundle = cameras.generate_rays(
+                    camera_indices=camera_idx, disable_distortion=disable_distortion,
+                    aabb_box=SceneBox(aabbbox)
+                ).to(pipeline.device)
+            else:
+                camera_ray_bundle = cameras.generate_rays(
+                    camera_indices=camera_idx, disable_distortion=disable_distortion
+                ).to(pipeline.device)
+            with torch.no_grad():
+                outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
+            if rgb_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {rgb_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --rgb_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if surface_depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {surface_depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if outside_depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {outside_depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            if inside_depth_output_name not in outputs:
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {inside_depth_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
+                sys.exit(1)
+            images.append(outputs[rgb_output_name].cpu().numpy())
+
+            # plt.imshow(outputs["normals"].cpu().numpy())
+            # plt.show()
+
+            # plt.imshow(outputs[surface_depth_output_name].cpu().numpy())
+            # plt.show()
+
+
+            depths_surface.append(outputs[surface_depth_output_name].cpu().numpy())
+            depths_outside.append(outputs[outside_depth_output_name].cpu().numpy())
+            depths_inside.append(outputs[inside_depth_output_name].cpu().numpy())
+
+            surface_normals.append(outputs["normals"].cpu().numpy())
+
+            ray_origins.append(camera_ray_bundle.origins.cpu().numpy())
+            ray_directions.append(camera_ray_bundle.directions.cpu().numpy())
+            ray_cam_ind.append(camera_ray_bundle.camera_indices.cpu().numpy())
+
+
+    return images, depths_surface, depths_outside, depths_inside, surface_normals ,ray_origins,ray_directions,ray_cam_ind
+
+def Add_RayBundle(original_bundle:RayBundle, new_bundle:RayBundle):
+    cam_ind = torch.cat([torch.tensor(original_bundle.camera_indices),torch.tensor(new_bundle.camera_indices)],0)
+    dirs = torch.cat([original_bundle.directions,new_bundle.directions],0)
+    ## Nears and Fars contain nothing
+    # nears = torch.cat([original_bundle.nears, new_bundle.nears],0)
+    # fars = torch.cat([torch.tensor(original_bundle.fars),torch.tensor(new_bundle.fars)],0)
+    origins = torch.cat([original_bundle.origins,new_bundle.origins],0)
+    pixel_area = torch.cat([original_bundle.pixel_area,new_bundle.pixel_area],0)
+
+    return RayBundle(origins,dirs,pixel_area,cam_ind)
+
+
+def collect_camera_poses_for_dataset(dataset: Optional[InputDataset]) -> List[Dict[str, Any]]:
+    """Collects rescaled, translated and optimised camera poses for a dataset.
+
+    Args:
+        dataset: Dataset to collect camera poses for.
+
+    Returns:
+        List of dicts containing camera poses.
+    """
+
+    if dataset is None:
+        return []
+
+    cameras = dataset.cameras
+    image_filenames = dataset.image_filenames
+
+    frames: List[Dict[str, Any]] = []
+
+    # new cameras are in cameras, whereas image paths are stored in a private member of the dataset
+    for idx in range(len(cameras)):
+        image_filename = image_filenames[idx]
+        transform = cameras.camera_to_worlds[idx].tolist()
+        frames.append(
+            {
+                "file_path": str(image_filename),
+                "transform": transform,
+            }
+        )
+
+    return frames
+
+
+def collect_camera_poses(pipeline: VanillaPipeline) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Collects camera poses for train and eval datasets.
+
+    Args:
+        pipeline: Pipeline to evaluate with.
+
+    Returns:
+        List of train camera poses, list of eval camera poses.
+    """
+
+    train_dataset = pipeline.datamanager.train_dataset
+    assert isinstance(train_dataset, InputDataset)
+
+    eval_dataset = pipeline.datamanager.eval_dataset
+    assert isinstance(eval_dataset, InputDataset)
+
+    train_frames = collect_camera_poses_for_dataset(train_dataset)
+    eval_frames = collect_camera_poses_for_dataset(eval_dataset)
+
+    return train_frames, eval_frames

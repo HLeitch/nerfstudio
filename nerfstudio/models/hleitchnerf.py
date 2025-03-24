@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-NeRF implementation that combines many recent advancements.
+Modifications of the nerfacto model
 """
 
 from __future__ import annotations
@@ -59,10 +59,10 @@ from nerfstudio.utils import colormaps
 
 
 @dataclass
-class NerfactoModelConfig(ModelConfig):
-    """Nerfacto Model Config"""
+class hleitchnerfModelConfig(ModelConfig):
+    """hleitchnerf Model Config"""
 
-    _target: Type = field(default_factory=lambda: NerfactoModel)
+    _target: Type = field(default_factory=lambda: hleitchnerfModel)
     near_plane: float = 0.05
     """How far along the ray to start sampling."""
     far_plane: float = 1000.0
@@ -116,14 +116,14 @@ class NerfactoModelConfig(ModelConfig):
     """Whether to predict normals or not."""
 
 
-class NerfactoModel(Model):
-    """Nerfacto model
+class hleitchnerfModel(Model):
+    """hleitchnerf model
 
     Args:
-        config: Nerfacto configuration to instantiate model
+        config: hleitchnerf configuration to instantiate model
     """
 
-    config: NerfactoModelConfig
+    config: hleitchnerfModelConfig
 
     def populate_modules(self):
         """Set the fields and modules."""
@@ -299,10 +299,14 @@ class NerfactoModel(Model):
                 )
 
                 # ground truth supervision for normals
-                loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
-                    outputs["rendered_pred_normal_loss"]
-                )
-        return loss_dict
+
+                ##no ground truth supervision for normals  Nice one somehow managed to change the only thing that doesnt matter... 
+                loss_dict["pred_normal_loss"] = 0
+
+        #        loss_dict["pred_normal_loss"] = self.config.pred_normal_loss_mult * torch.mean(
+        #            outputs["rendered_pred_normal_loss"]
+        #        )
+        #return loss_dict
 
     def get_image_metrics_and_images(
         self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]

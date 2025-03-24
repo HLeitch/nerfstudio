@@ -184,3 +184,72 @@ bash/
 cache/
 package-lock.json
 camera_paths/
+
+test-sphere/images/
+
+test-sphere/images_2/
+
+test-sphere/images_4/
+
+test-sphere/images_8/
+
+test-sphere/originals/
+
+test-sphere/
+
+log/
+
+sphere.obj
+
+TEST_SPHERE.obj
+
+*.npy
+
+one minus Abs Mesh Outputs/
+
+0.1 abs surface loss/
+
+abs mesh output/
+
+signed mesh outputs/
+
+early working outputs/
+
+ssan/
+
+TEST_SPHERE -0.01.obj
+
+TEST_SPHERE -0.019000000000000003.obj
+
+TEST_SPHERE -0.028000000000000004.obj
+
+TEST_SPHERE -0.037000000000000005.obj
+
+TEST_SPHERE -0.046000000000000006.obj
+
+TEST_SPHERE -0.05500000000000001.obj
+
+TEST_SPHERE -0.064.obj
+
+TEST_SPHERE -0.073.obj
+
+TEST_SPHERE -0.082.obj
+
+TEST_SPHERE -0.09100000000000001.obj
+
+TEST_SPHERE -0.1.obj
+
+images/room.png
+
+<<<<<<< Updated upstream
+Old loss Runs.zip
+
+runs/mass runs.zip
+
+trash surface value low.zip
+<<<<<<< Updated upstream
+=======
+=======
+statue_epoch_test/
+
+.vscode/launch.json
