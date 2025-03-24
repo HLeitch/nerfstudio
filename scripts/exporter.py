@@ -468,6 +468,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         # Increase the batchsize to speed up the evaluation.
         pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
 
+        ## Finding density using marching cubes. density_fn used
         densities = density_sampler(
             pipeline=pipeline,
             num_samples=self.num_samples_mc,
@@ -557,7 +558,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ]
         point_counter = 0
 
-        densest_vals = []
+        densest_vals = torch.empty(0,0)
 
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
@@ -617,10 +618,11 @@ class ExportSamuraiMarchingCubes(Exporter):
             print(f"Memory Usage: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
             outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
 
-            ##outputs = pipeline.model.field.density_fn(spaced_points.cuda())
+            density_fn_densities = pipeline.model.field.density_fn(spaced_points)
             output_densities = outputs[FieldHeadNames.DENSITY]
 
-           
+            CONSOLE.print(f"Densities Range,avg - ({torch.min(density_fn_densities)} - {torch.max(density_fn_densities)}),{torch.mean(density_fn_densities)}")
+            CONSOLE.print(f"Densities Range,avg - ({torch.min(output_densities)} - {torch.max(output_densities)}),{torch.mean(output_densities)}")
             densest_in_ray = output_densities.argmax(1)
 
             # print(f"after forward pass: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
@@ -638,7 +640,8 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             ###
             ###Testing densities retrieved from second pass
-            densest_vals.append(output_densities.max(1)[0].reshape((-1)).cpu())
+            torch.cat((densest_vals,output_densities.max(1)[0].reshape((-1))))              
+
             ###
 
 
@@ -664,7 +667,10 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             print(f"Loop Time = {e_time - s_time}")
         ##ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
-
+        densest_vals_np = np.array(densest_vals)
+        CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals)} - {np.max(densest_vals)}),{np.mean(densest_vals)}")
+        
+        
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
         refined_normals = torch.stack(refined_normals).to(torch_device)
@@ -716,13 +722,16 @@ class ExportSamuraiMarchingCubes(Exporter):
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
 
         ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_165440/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.013000000000000067 -0.24700000000000005 -0.15000000000000002 --bounding-box-max 0.3430000000000001 0.08299999999999998 0.18000000000000005 --num-samples-mc 250
-
+        ## Construct mesh using Poisson Surface Reconstruction and removing bottom 98% Density Points
         for x in {8}:#{6,7,8,9}:
             for p in {0.01}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
+                CONSOLE.print(f"Densities Range,avg - ({np.min(densities)} - {np.max(densities)}),{np.average(densities)}")
+
                 CONSOLE.print("Computing Mesh... this may take a while.")
-                mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-                vertices_to_remove = densities < np.quantile(densities, p)
+                ##mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
+                vertices_to_remove = densities < 0.98## np.quantile(densities, p)
                 mesh.remove_vertices_by_mask(vertices_to_remove)
+                mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
                 print("\033[A\033[A")
                 CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
                 
