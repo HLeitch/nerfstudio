@@ -1,0 +1,30 @@
+Notes for copying into book:
+
+After file structure changes notes and speculation. 
+
+core_code_checks.yml: I'm not too bothered about this one. it doesnt seem to be any huge changes though it would be worth noting that this is within the .github file just in case it messes with tha.
+
+Same story with most of the other .github files.
+
+.gitignore: Nothing egregious. though does change scripts/downloads to nerfstudio/scripts/downloads.
+
+Ditto Launch.json. This is going to have to be done gently however. IMPORTANT. Copy old launch.json and put in a safe space BEFORE merge. I don't want to lose it. 
+
+docs/developer_guides/debugging_tools/profiling.md: nothing to not in changes, though could be a very good resource in the future.
+
+Ditto new_methods.md
+
+docs/developer_guides/pipelines/datamanagers.md - Describes differences in raycasting methods.
+
+All of the developer guides files raise good points and the differences between them is going to help massivley in sorting broken things after the merge.
+
+Camera Optimisers.py - lots of changes.  The calculation of a camera poses seems to follow a different sturcture extra code added re applying position offsets to the camera and their rays.
+
+camera_paths.py has also had a shift about. ns.viewer.server.utils has been changed to ...viewer_legacy... not sure how much of the project has been turned into legacy content.  There are significant formatting and data changes. This may impact export paths. 
+
+Cameras.py and camera_utils.py are over 500 lines different. This needs to be fully explored and noted on. These files are key to the project. Have a look through some of my functions and determine where cameras and its functions are being used. 
+
+Cameras/rays.py and probably others have changed tensortype[...,3] to be Float[Tensor,"*batch 3"] Lookup what this change means and if it needs to be replicated across the HL functions.
+
+Datamanagers have been shifted about. Seemingly into other files. I cannot tell what has gone where
+
