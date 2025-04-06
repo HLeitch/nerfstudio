@@ -124,7 +124,7 @@ class NerfactoModel(Model):
         """Set the fields and modules."""
         ...
         # Fields
-        self.field = TCNNNerfactoField(
+        self.field = NerfactoField(
             self.scene_box.aabb,
             spatial_distortion=scene_contraction,
             num_images=self.num_train_data,
