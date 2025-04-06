@@ -1,3 +1,17 @@
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Script to texture an existing mesh file.
 """
@@ -6,17 +20,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import tyro
-from rich.console import Console
-from typing_extensions import Literal
 
 from nerfstudio.exporter import texture_utils
 from nerfstudio.exporter.exporter_utils import get_mesh_from_filename
 from nerfstudio.utils.eval_utils import eval_setup
-
-CONSOLE = Console(width=120)
 
 
 @dataclass
@@ -42,7 +52,6 @@ class TextureMesh:
 
     def main(self) -> None:
         """Export textured mesh"""
-        # pylint: disable=too-many-statements
 
         if not self.output_dir.exists():
             self.output_dir.mkdir(parents=True)
@@ -51,7 +60,7 @@ class TextureMesh:
         mesh = get_mesh_from_filename(str(self.input_mesh_filename), target_num_faces=self.target_num_faces)
 
         # load the Pipeline
-        _, pipeline, _ = eval_setup(self.load_config, test_mode="inference")
+        _, pipeline, _, _ = eval_setup(self.load_config, test_mode="inference")
 
         # texture the mesh with NeRF and export to a mesh.obj file
         # and a material and texture file

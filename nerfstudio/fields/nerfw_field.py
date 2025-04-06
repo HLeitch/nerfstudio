@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 from typing import Dict, Optional, Tuple
 
 import torch
-from torch import nn
-from torchtyping import TensorType
+from jaxtyping import Float
+from torch import Tensor, nn
 
 from nerfstudio.cameras.rays import RaySamples
 from nerfstudio.field_components.embedding import Embedding
@@ -75,7 +75,10 @@ class VanillaNerfWField(Field):
         self.appearance_embedding_dim = appearance_embedding_dim
         self.transient_embedding_dim = transient_embedding_dim
 
-        self.embedding_appearance = Embedding(self.num_images, self.appearance_embedding_dim)
+        if self.appearance_embedding_dim > 0:
+            self.embedding_appearance = Embedding(self.num_images, self.appearance_embedding_dim)
+        else:
+            self.embedding_appearance = None
         self.embedding_transient = Embedding(self.num_images, self.transient_embedding_dim)
 
         self.mlp_base = MLP(
@@ -96,7 +99,7 @@ class VanillaNerfWField(Field):
         self.mlp_head = MLP(
             in_dim=self.mlp_base.get_out_dim()
             + self.direction_encoding.get_out_dim()
-            + self.embedding_appearance.get_out_dim(),
+            + (self.embedding_appearance.get_out_dim() if self.embedding_appearance is not None else 0),
             num_layers=head_mlp_num_layers,
             layer_width=head_mlp_layer_width,
             out_activation=nn.ReLU(),
@@ -109,7 +112,7 @@ class VanillaNerfWField(Field):
         self.field_head_transient_rgb = TransientRGBFieldHead(in_dim=self.mlp_transient.get_out_dim())
         self.field_head_transient_density = TransientDensityFieldHead(in_dim=self.mlp_transient.get_out_dim())
 
-    def get_density(self, ray_samples: RaySamples):
+    def get_density(self, ray_samples: RaySamples) -> Tuple[Tensor, Tensor]:
         """Computes and returns the densities."""
         encoded_xyz = self.position_encoding(ray_samples.frustums.get_positions())
         encoded_xyz = self.position_encoding(ray_samples.frustums.get_positions())
@@ -118,25 +121,27 @@ class VanillaNerfWField(Field):
         return density, base_mlp_out
 
     def get_outputs(
-        self, ray_samples: RaySamples, density_embedding: Optional[TensorType[..., "embedding_size"]] = None
-    ) -> Dict[FieldHeadNames, TensorType]:
+        self, ray_samples: RaySamples, density_embedding: Optional[Float[Tensor, "*batch embedding_size"]] = None
+    ) -> Dict[FieldHeadNames, Tensor]:
         """Returns the outputs of the NeRF-W field.
 
         Args:
-            ray_samples (RaySamples): Ray samples.
-            density_embedding (TensorType[..., "embedding_size"], optional): Density embedding.
+            ray_samples: Ray samples.
+            density_embedding: Density embedding.
 
         Returns:
-            Dict[FieldHeadNames, TensorType]: Outputs of the NeRF-W field.
+            Outputs of the NeRF-W field.
         """
         outputs = {}
         encoded_dir = self.direction_encoding(ray_samples.frustums.directions)
         if ray_samples.camera_indices is None:
             raise AttributeError("Camera indices are not provided.")
         camera_indices = ray_samples.camera_indices.squeeze().to(ray_samples.frustums.origins.device)
-        embedded_appearance = self.embedding_appearance(camera_indices)
-        mlp_in = torch.cat([density_embedding, encoded_dir, embedded_appearance], dim=-1)  # type: ignore
-        mlp_head_out = self.mlp_head(mlp_in)
+        mlp_in = [density_embedding, encoded_dir]
+        if self.embedding_appearance is not None:
+            embedded_appearance = self.embedding_appearance(camera_indices)
+            mlp_in.append(embedded_appearance)
+        mlp_head_out = self.mlp_head(torch.cat(mlp_in, dim=-1))
         outputs[self.field_head_rgb.field_head_name] = self.field_head_rgb(mlp_head_out)  # static rgb
         embedded_transient = self.embedding_transient(camera_indices)
         transient_mlp_in = torch.cat([density_embedding, embedded_transient], dim=-1)  # type: ignore

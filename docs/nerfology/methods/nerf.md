@@ -18,7 +18,7 @@ ns-train vanilla-nerf
 
 If you have arrived to this site, it is likely that you have at least heard of NeRFs. This page will discuss the original NeRF paper, _"NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis"_ by Mildenhall, Srinivasan, Tancik et al. (2020). 
 
-For most tasks, using the original NeRF model is likely not a good choice and hence we provide implementations of various other NeRF related models. It is however useful to understand how NeRF's work as most follow ups follow a similar structure.
+For most tasks, using the original NeRF model is likely not a good choice and hence we provide implementations of various other NeRF related models. It is however useful to understand how NeRF's work as most follow ups follow a similar structure and it doesn't require CUDA to execute (useful for stepping through the code with a debugger if you don't have a GPU at hand).
 
 The goal is to optimize a volumetric representation of a scene that can be rendered from novel viewpoints. This representation is optimized from a set of images and associated camera poses.
 
@@ -115,7 +115,7 @@ Rending RGB images is not the only type of output render supported. It is possib
 Associated nerfstudio code:
 
 ```python
-from nerfstudio.renderers.renderers import RGBRenderer
+from nerfstudio.model_components.renderers import RGBRenderer
 
 renderer_rgb = RGBRenderer(background_color=colors.WHITE)
 # Ray samples discussed in the next section

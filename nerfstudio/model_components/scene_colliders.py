@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ Scene Colliders
 from __future__ import annotations
 
 import torch
-from torch import nn
-from torchtyping import TensorType
+from jaxtyping import Float
+from torch import Tensor, nn
 
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.data.scene_box import SceneBox
@@ -33,7 +33,7 @@ class SceneCollider(nn.Module):
         self.kwargs = kwargs
         super().__init__()
 
-    def set_nears_and_fars(self, ray_bundle) -> RayBundle:
+    def set_nears_and_fars(self, ray_bundle: RayBundle) -> RayBundle:
         """To be implemented."""
         raise NotImplementedError
 
@@ -57,7 +57,7 @@ class AABBBoxCollider(SceneCollider):
         self.near_plane = near_plane
 
     def _intersect_with_aabb(
-        self, rays_o: TensorType["num_rays", 3], rays_d: TensorType["num_rays", 3], aabb: TensorType[2, 3]
+        self, rays_o: Float[Tensor, "num_rays 3"], rays_d: Float[Tensor, "num_rays 3"], aabb: Float[Tensor, "2 3"]
     ):
         """Returns collection of valid rays within a specified near/far bounding box along with a mask
         specifying which rays are valid
@@ -108,7 +108,6 @@ class AABBBoxCollider(SceneCollider):
         return ray_bundle
 
 
-@torch.jit.script
 def _intersect_with_sphere(
     rays_o: torch.Tensor, rays_d: torch.Tensor, center: torch.Tensor, radius: float = 1.0, near_plane: float = 0.0
 ):
@@ -136,7 +135,7 @@ class SphereCollider(SceneCollider):
 
     Args:
         center: center of sphere to intersect [3]
-        redius: radius of sphere to intersect
+        radius: radius of sphere to intersect
         near_plane: near plane to clamp to
     """
 
@@ -173,16 +172,20 @@ class NearFarCollider(SceneCollider):
     Args:
         near_plane: distance to near plane
         far_plane: distance to far plane
+        reset_near_plane: whether to reset the near plane to 0.0 during inference. The near plane can be
+            helpful for reducing floaters during training, but it can cause clipping artifacts during
+            inference when an evaluation or viewer camera moves closer to the object.
     """
 
-    def __init__(self, near_plane: float, far_plane: float, **kwargs) -> None:
+    def __init__(self, near_plane: float, far_plane: float, reset_near_plane: bool = True, **kwargs) -> None:
         self.near_plane = near_plane
         self.far_plane = far_plane
+        self.reset_near_plane = reset_near_plane
         super().__init__(**kwargs)
 
     def set_nears_and_fars(self, ray_bundle: RayBundle) -> RayBundle:
         ones = torch.ones_like(ray_bundle.origins[..., 0:1])
-        near_plane = self.near_plane if self.training else 0
+        near_plane = self.near_plane if (self.training or not self.reset_near_plane) else 0
         ray_bundle.nears = ones * near_plane
         ray_bundle.fars = ones * self.far_plane
         return ray_bundle

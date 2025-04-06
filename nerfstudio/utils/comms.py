@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """functionality to handle multiprocessing syncing and communicating"""
+
 import torch.distributed as dist
 
 LOCAL_PROCESS_GROUP = None
@@ -41,9 +42,9 @@ def get_local_rank() -> int:
     """The rank of the current process within the local (per-machine) process group."""
     if not is_dist_avail_and_initialized():
         return 0
-    assert (
-        LOCAL_PROCESS_GROUP is not None
-    ), "Local process group is not created! Please use launch() to spawn processes!"
+    assert LOCAL_PROCESS_GROUP is not None, (
+        "Local process group is not created! Please use launch() to spawn processes!"
+    )
     return dist.get_rank(group=LOCAL_PROCESS_GROUP)
 
 

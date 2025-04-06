@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,20 +17,20 @@
 import json
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
-from rich.console import Console
+import numpy as np
 
 from nerfstudio.process_data import process_data_utils
 from nerfstudio.process_data.process_data_utils import CAMERA_MODELS
 from nerfstudio.utils import io
-
-CONSOLE = Console(width=120)
+from nerfstudio.utils.rich_utils import CONSOLE
 
 
 def polycam_to_json(
     image_filenames: List[Path],
     depth_filenames: List[Path],
+    glb_filename: Optional[Path],
     cameras_dir: Path,
     output_dir: Path,
     min_blur_score: float = 0.0,
@@ -70,9 +70,9 @@ def polycam_to_json(
         frame["cy"] = frame_json["cy"] - crop_border_pixels
         frame["w"] = frame_json["width"] - crop_border_pixels * 2
         frame["h"] = frame_json["height"] - crop_border_pixels * 2
-        frame["file_path"] = f"./images/frame_{i+1:05d}{image_filename.suffix}"
+        frame["file_path"] = f"./images/frame_{i + 1:05d}{image_filename.suffix}"
         if use_depth:
-            frame["depth_map_path"] = f"./depth/frame_{i+1:05d}{depth_filenames[i].suffix}"
+            frame["depth_file_path"] = f"./depth/frame_{i + 1:05d}{depth_filenames[i].suffix}"
         # Transform matrix to nerfstudio format. Please refer to the documentation for coordinate system conventions.
         frame["transform_matrix"] = [
             [frame_json["t_20"], frame_json["t_21"], frame_json["t_22"], frame_json["t_23"]],
@@ -82,6 +82,31 @@ def polycam_to_json(
         ]
         frames.append(frame)
     data["frames"] = frames
+
+    if glb_filename is not None:
+        # If the .glb is populated, use it to save a pointcloud for splatfacto init
+        import open3d as o3d
+
+        mesh = o3d.io.read_triangle_mesh(str(glb_filename), enable_post_processing=True)
+        textures = np.asarray(mesh.textures[0])  # 2D images of color
+        vert_points = np.asarray(mesh.vertices)  # 3D positions of verts
+        tri_ids = np.asarray(mesh.triangles)  # indices of the vertices
+        points = vert_points[tri_ids.flatten()]  # get the 3D positions of the vertices
+        uvs = np.asarray(mesh.triangle_uvs)  # get the uv coords of the vertices
+        # convert uv coord to texture integer index
+        tex_ids = (uvs[:, 1] * textures.shape[0]).astype(int), (uvs[:, 0] * textures.shape[1]).astype(int)
+        colors = textures[tex_ids[0], tex_ids[1]]
+        pointcloud = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(points))
+        pointcloud.colors = o3d.utility.Vector3dVector(colors.astype(np.float64) / 255.0)
+        pointcloud = pointcloud.remove_duplicated_points()
+        # align the pointcloud to the coord system of cameras, which is provided inside the mesh_info.json file
+        mesh_info_json = json.load(open(glb_filename.parent / "mesh_info.json"))
+        transform = np.array(mesh_info_json["alignmentTransform"]).reshape(4, 4).T
+        pointcloud = pointcloud.transform(np.linalg.inv(transform))
+        # shift the axes coordinates to match the nerfstudio ones (same as the cameras' coord system)
+        pointcloud.points = o3d.utility.Vector3dVector(np.array(pointcloud.points)[:, [2, 0, 1]])
+        o3d.io.write_point_cloud(str(output_dir / "point_cloud.ply"), pointcloud)
+        data["ply_file_path"] = "point_cloud.ply"
 
     with open(output_dir / "transforms.json", "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
@@ -134,6 +159,7 @@ def process_images(
         image_dir=image_dir,
         crop_border_pixels=crop_border_pixels,
         verbose=verbose,
+        num_downscales=num_downscales,
     )
     num_frames = len(copied_image_paths)
 
@@ -147,9 +173,6 @@ def process_images(
         )
     else:
         summary_log.append(f"Started with {num_frames} images")
-
-    # Downscale images
-    summary_log.append(process_data_utils.downscale_images(image_dir, num_downscales, verbose=verbose))
 
     # Save json
     if num_frames == 0:
@@ -193,7 +216,11 @@ def process_depth_maps(
 
     # Copy depth images to output directory
     copied_depth_maps_paths = process_data_utils.copy_and_upscale_polycam_depth_maps_list(
-        polycam_depth_maps_filenames, depth_dir=depth_dir, crop_border_pixels=crop_border_pixels, verbose=verbose
+        polycam_depth_maps_filenames,
+        depth_dir=depth_dir,
+        num_downscales=num_downscales,
+        crop_border_pixels=crop_border_pixels,
+        verbose=verbose,
     )
 
     num_processed_depth_maps = len(copied_depth_maps_paths)
@@ -213,10 +240,5 @@ def process_depth_maps(
         )
     else:
         summary_log.append(f"Started with {num_processed_depth_maps} images")
-
-    # Downscale depth maps
-    summary_log.append(
-        process_data_utils.downscale_images(depth_dir, num_downscales, folder_name="depth", verbose=verbose)
-    )
 
     return summary_log, polycam_depth_maps_filenames

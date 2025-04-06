@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,48 +18,45 @@
 
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
-import mediapy
 import numpy as np
 import torch
 import torch.nn.functional as F
 import tyro
-from rich.console import Console
-from torch import nn
-from torchtyping import TensorType
+from jaxtyping import Float
+from torch import Tensor, nn
+from torch.cuda.amp.grad_scaler import GradScaler
 
-CONSOLE = Console(width=120)
+from nerfstudio.utils.rich_utils import CONSOLE
 
-try:
-    from diffusers import PNDMScheduler, StableDiffusionPipeline
-    from transformers import logging
-
-except ImportError:
-    CONSOLE.print("[bold red]Missing Stable Diffusion packages.")
-    CONSOLE.print(r"Install using [yellow]pip install nerfstudio\[gen][/yellow]")
-    CONSOLE.print(r"or [yellow]pip install -e .\[gen][/yellow] if installing from source.")
-    sys.exit(1)
-
-logging.set_verbosity_error()
 IMG_DIM = 512
 CONST_SCALE = 0.18215
-
-SD_SOURCE = "runwayml/stable-diffusion-v1-5"
-CLIP_SOURCE = "openai/clip-vit-large-patch14"
+SD_IDENTIFIERS = {
+    "1-5": "runwayml/stable-diffusion-v1-5",
+    "2-0": "stabilityai/stable-diffusion-2-base",
+    "2-1": "stabilityai/stable-diffusion-2-1-base",
+}
 
 
 class StableDiffusion(nn.Module):
     """Stable Diffusion implementation
-
     Args:
         device: device to use
         num_train_timesteps: number of training timesteps
-
     """
 
-    def __init__(self, device: Union[torch.device, str], num_train_timesteps: int = 1000) -> None:
+    def __init__(self, device: Union[torch.device, str], num_train_timesteps: int = 1000, version="1-5") -> None:
         super().__init__()
+
+        try:
+            from diffusers import DiffusionPipeline, PNDMScheduler, StableDiffusionPipeline
+
+        except ImportError:
+            CONSOLE.print("[bold red]Missing Stable Diffusion packages.")
+            CONSOLE.print(r"Install using [yellow]pip install nerfstudio\[gen][/yellow]")
+            CONSOLE.print(r"or [yellow]pip install -e .\[gen][/yellow] if installing from source.")
+            sys.exit(1)
 
         self.device = device
         self.num_train_timesteps = num_train_timesteps
@@ -75,30 +72,30 @@ class StableDiffusion(nn.Module):
         )
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # type: ignore
 
-        pipe = StableDiffusionPipeline.from_pretrained(SD_SOURCE, torch_dtype=torch.float16)
-        assert pipe is not None
+        sd_id = SD_IDENTIFIERS[version]
+        pipe = StableDiffusionPipeline.from_pretrained(sd_id, torch_dtype=torch.float16)
+
+        assert isinstance(pipe, DiffusionPipeline)  # and hasattr(pipe, "to")
         pipe = pipe.to(self.device)
 
         pipe.enable_attention_slicing()
 
-        self.tokenizer = pipe.tokenizer
         self.unet = pipe.unet
+        self.unet.to(memory_format=torch.channels_last)
+
+        self.tokenizer = pipe.tokenizer
         self.text_encoder = pipe.text_encoder
         self.auto_encoder = pipe.vae
-
-        self.unet.to(memory_format=torch.channels_last)
 
         CONSOLE.print("Stable Diffusion loaded!")
 
     def get_text_embeds(
         self, prompt: Union[str, List[str]], negative_prompt: Union[str, List[str]]
-    ) -> TensorType[2, "max_length", "embed_dim"]:
+    ) -> Float[Tensor, "2 max_length embed_dim"]:
         """Get text embeddings for prompt and negative prompt
-
         Args:
             prompt: Prompt text
             negative_prompt: Negative prompt text
-
         Returns:
             Text embeddings
         """
@@ -130,21 +127,21 @@ class StableDiffusion(nn.Module):
 
     def sds_loss(
         self,
-        text_embeddings: TensorType["N", "max_length", "embed_dim"],
-        image: TensorType["BS", 3, "H", "W"],
+        text_embeddings: Float[Tensor, "N max_length embed_dim"],
+        image: Float[Tensor, "BS 3 H W"],
         guidance_scale: float = 100.0,
-    ) -> Tuple[torch.Tensor, TensorType["BS", 4, "H", "W"], TensorType["BS", 4, "H", "W"]]:
+        grad_scaler: Optional[GradScaler] = None,
+    ) -> torch.Tensor:
         """Score Distilation Sampling loss proposed in DreamFusion paper (https://dreamfusion3d.github.io/)
-
         Args:
             text_embeddings: Text embeddings
             image: Rendered image
             guidance_scale: How much to weigh the guidance
-
+            grad_scaler: Grad scaler
         Returns:
-            A tuple of Loss, latent, and gradient
+            The loss
         """
-        image = F.interpolate(image, (IMG_DIM, IMG_DIM), mode="bilinear")
+        image = F.interpolate(image, (IMG_DIM, IMG_DIM), mode="bilinear").to(torch.float16)
         t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
         latents = self.imgs_to_latent(image)
 
@@ -154,12 +151,12 @@ class StableDiffusion(nn.Module):
             noise = torch.randn_like(latents)
             latents_noisy = self.scheduler.add_noise(latents, noise, t)  # type: ignore
             # pred noise
-            latent_model_input = torch.cat([latents_noisy] * 2)
+            latent_model_input = torch.cat((latents_noisy,) * 2)
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
         # perform guidance
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
         # w(t), sigma_t^2
         w = 1 - self.alphas[t]
@@ -167,21 +164,21 @@ class StableDiffusion(nn.Module):
         grad = w * (noise_pred - noise)
         grad = torch.nan_to_num(grad)
 
-        sds_mse = torch.mean(torch.nan_to_num(torch.square(noise_pred - noise)))
+        target = (latents - grad).detach()
+        loss = 0.5 * F.mse_loss(latents, target, reduction="sum") / latents.shape[0]
 
-        return sds_mse, latents, grad
+        return loss
 
     def produce_latents(
         self,
-        text_embeddings: TensorType["N", "max_length", "embed_dim"],
+        text_embeddings: Float[Tensor, "N max_length embed_dim"],
         height: int = IMG_DIM,
         width: int = IMG_DIM,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        latents: Optional[TensorType["BS", 4, "H", "W"]] = None,
-    ) -> TensorType["BS", 4, "H", "W"]:
+        latents: Optional[Float[Tensor, "BS 4 H W"]] = None,
+    ) -> Float[Tensor, "BS 4 H W"]:
         """Produce latents for a given text embedding
-
         Args:
             text_embeddings: Text embeddings
             height: Height of the image
@@ -189,14 +186,14 @@ class StableDiffusion(nn.Module):
             num_inference_steps: Number of inference steps
             guidance_scale: How much to weigh the guidance
             latents: Latents to start with
-
         Returns:
             Latents
         """
 
         if latents is None:
             latents = torch.randn(
-                (text_embeddings.shape[0] // 2, self.unet.in_channels, height // 8, width // 8), device=self.device
+                (text_embeddings.shape[0] // 2, self.unet.config.in_channels, height // 8, width // 8),
+                device=self.device,
             )
 
         self.scheduler.set_timesteps(num_inference_steps)  # type: ignore
@@ -209,22 +206,23 @@ class StableDiffusion(nn.Module):
 
                 # predict the noise residual
                 with torch.no_grad():
-                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
+                    noise_pred = self.unet(
+                        latent_model_input, t.to(self.device), encoder_hidden_states=text_embeddings
+                    ).sample
 
                 # perform guidance
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents)["prev_sample"]  # type: ignore
+        assert isinstance(latents, Tensor)
         return latents
 
-    def latents_to_img(self, latents: TensorType["BS", 4, "H", "W"]) -> TensorType["BS", 3, "H", "W"]:
+    def latents_to_img(self, latents: Float[Tensor, "BS 4 H W"]) -> Float[Tensor, "BS 3 H W"]:
         """Convert latents to images
-
         Args:
             latents: Latents to convert
-
         Returns:
             Images
         """
@@ -238,12 +236,10 @@ class StableDiffusion(nn.Module):
 
         return imgs
 
-    def imgs_to_latent(self, imgs: TensorType["BS", 3, "H", "W"]) -> TensorType["BS", 4, "H", "W"]:
+    def imgs_to_latent(self, imgs: Float[Tensor, "BS 3 H W"]) -> Float[Tensor, "BS 4 H W"]:
         """Convert images to latents
-
         Args:
             imgs: Images to convert
-
         Returns:
             Latents
         """
@@ -263,14 +259,12 @@ class StableDiffusion(nn.Module):
         latents=None,
     ) -> np.ndarray:
         """Generate an images from a prompts.
-
         Args:
             prompts: The prompt to generate an image from.
             negative_prompts: The negative prompt to generate an image from.
             num_inference_steps: The number of inference steps to perform.
             guidance_scale: The scale of the guidance.
             latents: The latents to start from, defaults to random.
-
         Returns:
             The generated image.
         """
@@ -297,14 +291,12 @@ class StableDiffusion(nn.Module):
         self, prompts, negative_prompts="", num_inference_steps=50, guidance_scale=7.5, latents=None
     ) -> np.ndarray:
         """Generate an image from a prompt.
-
         Args:
             prompts: The prompt to generate an image from.
             negative_prompts: The negative prompt to generate an image from.
             num_inference_steps: The number of inference steps to perform.
             guidance_scale: The scale of the guidance.
             latents: The latents to start from, defaults to random.
-
         Returns:
             The generated image.
         """
@@ -315,7 +307,6 @@ def generate_image(
     prompt: str, negative: str = "", seed: int = 0, steps: int = 50, save_path: Path = Path("test_sd.png")
 ):
     """Generate an image from a prompt using Stable Diffusion.
-
     Args:
         prompt: The prompt to use.
         negative: The negative prompt to use.
@@ -329,6 +320,9 @@ def generate_image(
     with torch.no_grad():
         sd = StableDiffusion(cuda_device)
         imgs = sd.prompt_to_img(prompt, negative, steps)
+
+        import mediapy  # Slow to import, so we do it lazily.
+
         mediapy.write_image(str(save_path), imgs[0])
 
 

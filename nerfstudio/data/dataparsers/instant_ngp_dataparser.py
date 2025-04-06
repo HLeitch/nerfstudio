@@ -1,4 +1,4 @@
-# Copyright 2022 The Nerfstudio Team. All rights reserved.
+# Copyright 2022 the Regents of the University of California, Nerfstudio Team and contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,24 +18,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Tuple, Type
+from typing import Dict, Literal, Tuple, Type
 
 import imageio
 import numpy as np
 import torch
-from rich.console import Console
 
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.cameras import Cameras, CameraType
-from nerfstudio.data.dataparsers.base_dataparser import (
-    DataParser,
-    DataParserConfig,
-    DataparserOutputs,
-)
+from nerfstudio.data.dataparsers.base_dataparser import DataParser, DataParserConfig, DataparserOutputs
 from nerfstudio.data.scene_box import SceneBox
+from nerfstudio.data.utils.dataparsers_utils import (
+    get_train_eval_split_all,
+    get_train_eval_split_filename,
+    get_train_eval_split_fraction,
+    get_train_eval_split_interval,
+)
 from nerfstudio.utils.io import load_from_json
-
-CONSOLE = Console(width=120)
+from nerfstudio.utils.rich_utils import CONSOLE
 
 
 @dataclass
@@ -48,6 +48,18 @@ class InstantNGPDataParserConfig(DataParserConfig):
     """Directory or explicit json file path specifying location of data."""
     scene_scale: float = 0.3333
     """How much to scale the scene."""
+    eval_mode: Literal["fraction", "filename", "interval", "all"] = "fraction"
+    """
+    The method to use for splitting the dataset into train and eval.
+    Fraction splits based on a percentage for train and the remaining for eval.
+    Filename splits based on filenames containing train/eval.
+    Interval uses every nth frame for eval.
+    All uses all the images for any split.
+    """
+    train_split_fraction: float = 0.9
+    """The percentage of the dataset to use for training. Only used when eval_mode is train-split-fraction."""
+    eval_interval: int = 8
+    """The interval between frames to use for eval. Only used when eval_mode is eval-interval."""
 
 
 @dataclass
@@ -65,6 +77,7 @@ class InstantNGP(DataParser):
             data_dir = self.config.data
 
         image_filenames = []
+        mask_filenames = []
         poses = []
         num_skipped_image_filenames = 0
         for frame in meta["frames"]:
@@ -73,7 +86,7 @@ class InstantNGP(DataParser):
             if not fname.exists():
                 fname = data_dir / Path(frame["file_path"] + ".png")
             if not fname.exists():
-                CONSOLE.log(f"couldnt find {fname} image")
+                CONSOLE.log(f"couldn't find {fname} image")
                 num_skipped_image_filenames += 1
             else:
                 if "w" not in meta:
@@ -87,16 +100,45 @@ class InstantNGP(DataParser):
                         meta["h"] = h
                 image_filenames.append(fname)
                 poses.append(np.array(frame["transform_matrix"]))
+                if "mask_path" in frame:
+                    mask_fname = data_dir / Path(frame["mask_path"])
+                    mask_filenames.append(mask_fname)
         if num_skipped_image_filenames >= 0:
             CONSOLE.print(f"Skipping {num_skipped_image_filenames} files in dataset split {split}.")
-        assert (
-            len(image_filenames) != 0
-        ), """
-        No image files found. 
+        assert len(image_filenames) != 0, """
+        No image files found.
         You should check the file_paths in the transforms.json file to make sure they are correct.
         """
         poses = np.array(poses).astype(np.float32)
         poses[:, :3, 3] *= self.config.scene_scale
+
+        # find train and eval indices based on the eval_mode specified
+        if self.config.eval_mode == "fraction":
+            i_train, i_eval = get_train_eval_split_fraction(image_filenames, self.config.train_split_fraction)
+        elif self.config.eval_mode == "filename":
+            i_train, i_eval = get_train_eval_split_filename(image_filenames)
+        elif self.config.eval_mode == "interval":
+            i_train, i_eval = get_train_eval_split_interval(image_filenames, self.config.eval_interval)
+        elif self.config.eval_mode == "all":
+            CONSOLE.log(
+                "[yellow] Be careful with '--eval-mode=all'. If using camera optimization, the cameras may diverge in the current implementation, giving unpredictable results."
+            )
+            i_train, i_eval = get_train_eval_split_all(image_filenames)
+        else:
+            raise ValueError(f"Unknown eval mode {self.config.eval_mode}")
+
+        if split == "train":
+            indices = i_train
+        elif split in ["val", "test"]:
+            indices = i_eval
+        else:
+            raise ValueError(f"Unknown dataparser split {split}")
+        # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
+        image_filenames = [image_filenames[i] for i in indices]
+        mask_filenames = [mask_filenames[i] for i in indices] if len(mask_filenames) > 0 else []
+
+        idx_tensor = torch.tensor(indices, dtype=torch.long)
+        poses = poses[idx_tensor]
 
         camera_to_world = torch.from_numpy(poses[:, :3])  # camera to world transform
 
@@ -123,6 +165,10 @@ class InstantNGP(DataParser):
 
         w, h = meta["w"], meta["h"]
 
+        camera_type = CameraType.PERSPECTIVE
+        if meta.get("is_fisheye", False):
+            camera_type = CameraType.FISHEYE
+
         cameras = Cameras(
             fx=float(fl_x),
             fy=float(fl_y),
@@ -132,7 +178,7 @@ class InstantNGP(DataParser):
             height=int(h),
             width=int(w),
             camera_to_worlds=camera_to_world,
-            camera_type=CameraType.PERSPECTIVE,
+            camera_type=camera_type,
         )
 
         # TODO(ethan): add alpha background color
@@ -140,6 +186,7 @@ class InstantNGP(DataParser):
             image_filenames=image_filenames,
             cameras=cameras,
             scene_box=scene_box,
+            mask_filenames=mask_filenames if len(mask_filenames) > 0 else None,
             dataparser_scale=self.config.scene_scale,
         )
 
