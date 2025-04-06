@@ -39,7 +39,8 @@ from torch import Tensor, nn
 from nerfstudio.cameras.rays import RaySamples
 from nerfstudio.utils import colors
 from nerfstudio.utils.math import safe_normalize
-from nerfstudio.utils.spherical_harmonics import components_from_spherical_harmonics
+from nerfstudio.utils.spherical_harmonics import \
+    components_from_spherical_harmonics
 
 BackgroundColor = Union[Literal["random", "last_sample", "black", "white"], Float[Tensor, "3"], Float[Tensor, "*bs 3"]]
 BACKGROUND_COLOR_OVERRIDE: Optional[Float[Tensor, "3"]] = None
@@ -402,11 +403,11 @@ class DepthRenderer16Percentile(nn.Module):
 
     def forward(
         self,
-        weights: TensorType[..., "num_samples", 1],
+        weights: Float[Tensor, "*batch num_samples 1"],
         ray_samples: RaySamples,
-        ray_indices: Optional[TensorType["num_samples"]] = None,
+        ray_indices: Optional[Int[Tensor, "num_samples"]] = None,
         num_rays: Optional[int] = None,
-    ) -> TensorType[..., 1]:
+    ) -> Float[Tensor, "*batch 1"]:
         """Composite samples along ray and calculate depths.
 
         Args:
@@ -436,8 +437,12 @@ class DepthRenderer16Percentile(nn.Module):
 
             if ray_indices is not None and num_rays is not None:
                 # Necessary for packed samples from volumetric ray sampler
-                depth = nerfacc.accumulate_along_rays(weights, ray_indices, steps, num_rays)
-                accumulation = nerfacc.accumulate_along_rays(weights, ray_indices, None, num_rays)
+                depth = nerfacc.accumulate_along_rays(
+                    weights[..., 0], values=steps, ray_indices=ray_indices, n_rays=num_rays
+                )
+                accumulation = nerfacc.accumulate_along_rays(
+                    weights[..., 0], values=None, ray_indices=ray_indices, n_rays=num_rays
+                )
                 depth = depth / (accumulation + eps)
             else:
                 depth = torch.sum(weights * steps, dim=-2) / (torch.sum(weights, -2) + eps)
@@ -447,6 +452,7 @@ class DepthRenderer16Percentile(nn.Module):
             return depth
 
         raise NotImplementedError(f"Method {self.method} not implemented")
+
 
 
 class DepthRenderer84Percentile(nn.Module):
@@ -465,12 +471,12 @@ class DepthRenderer84Percentile(nn.Module):
         self.method = method
 
     def forward(
-        self,
-        weights: TensorType[..., "num_samples", 1],
+         self,
+        weights: Float[Tensor, "*batch num_samples 1"],
         ray_samples: RaySamples,
-        ray_indices: Optional[TensorType["num_samples"]] = None,
+        ray_indices: Optional[Int[Tensor, "num_samples"]] = None,
         num_rays: Optional[int] = None,
-    ) -> TensorType[..., 1]:
+    ) -> Float[Tensor, "*batch 1"]:
         """Composite samples along ray and calculate depths.
 
         Args:
@@ -500,8 +506,12 @@ class DepthRenderer84Percentile(nn.Module):
 
             if ray_indices is not None and num_rays is not None:
                 # Necessary for packed samples from volumetric ray sampler
-                depth = nerfacc.accumulate_along_rays(weights, ray_indices, steps, num_rays)
-                accumulation = nerfacc.accumulate_along_rays(weights, ray_indices, None, num_rays)
+                depth = nerfacc.accumulate_along_rays(
+                    weights[..., 0], values=steps, ray_indices=ray_indices, n_rays=num_rays
+                )
+                accumulation = nerfacc.accumulate_along_rays(
+                    weights[..., 0], values=None, ray_indices=ray_indices, n_rays=num_rays
+                )
                 depth = depth / (accumulation + eps)
             else:
                 depth = torch.sum(weights * steps, dim=-2) / (torch.sum(weights, -2) + eps)
@@ -511,6 +521,7 @@ class DepthRenderer84Percentile(nn.Module):
             return depth
 
         raise NotImplementedError(f"Method {self.method} not implemented")
+
 
 
 class UncertaintyRenderer(nn.Module):
