@@ -1,6 +1,7 @@
 """
 Script for exporting NeRF into other formats.
 """
+from __future__ import annotations
 
 import json
 import os
@@ -24,12 +25,10 @@ import nerfstudio.cameras.cameras as nscam
 import nerfstudio.exporter.marching_cubes_utils as mcUtils
 from nerfstudio.cameras.rays import Frustums, RayBundle, RaySamples
 from nerfstudio.exporter import ssan_utils, texture_utils, tsdf_utils
-from nerfstudio.exporter.exporter_utils import (
-    collect_camera_poses,
-    density_sampler,
-    generate_point_cloud,
-    get_mesh_from_filename,
-)
+from nerfstudio.exporter.exporter_utils import (collect_camera_poses,
+                                                density_sampler,
+                                                generate_point_cloud,
+                                                get_mesh_from_filename)
 from nerfstudio.exporter.object_renderer import render_mesh_to_tb
 from nerfstudio.exporter.unit_tests import display_histogram_of_densities
 from nerfstudio.field_components.field_heads import FieldHeadNames
@@ -38,7 +37,7 @@ from nerfstudio.utils import math as math
 from nerfstudio.utils.eval_utils import eval_setup
 
 CONSOLE = Console(width=120)
-from __future__ import annotations
+
 
 import json
 import os
@@ -58,16 +57,21 @@ from typing_extensions import Annotated, Literal
 
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.data.datamanagers.base_datamanager import VanillaDataManager
-from nerfstudio.data.datamanagers.parallel_datamanager import ParallelDataManager
+from nerfstudio.data.datamanagers.parallel_datamanager import \
+    ParallelDataManager
 from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.exporter import texture_utils, tsdf_utils
-from nerfstudio.exporter.exporter_utils import collect_camera_poses, generate_point_cloud, get_mesh_from_filename
-from nerfstudio.exporter.marching_cubes import generate_mesh_with_multires_marching_cubes
+from nerfstudio.exporter.exporter_utils import (collect_camera_poses,
+                                                generate_point_cloud,
+                                                get_mesh_from_filename)
+from nerfstudio.exporter.marching_cubes import \
+    generate_mesh_with_multires_marching_cubes
 from nerfstudio.fields.sdf_field import SDFField  # noqa
 from nerfstudio.models.splatfacto import SplatfactoModel
 from nerfstudio.pipelines.base_pipeline import Pipeline, VanillaPipeline
 from nerfstudio.utils.eval_utils import eval_setup
 from nerfstudio.utils.rich_utils import CONSOLE
+
 
 @dataclass
 class Exporter:
@@ -1146,6 +1150,8 @@ Commands = tyro.conf.FlagConversionOff[
         Annotated[ExportTSDFMesh, tyro.conf.subcommand(name="tsdf")],
         Annotated[ExportPoissonMesh, tyro.conf.subcommand(name="poisson")],
         Annotated[ExportMarchingCubesMesh, tyro.conf.subcommand(name="marching-cubes")],
+        Annotated[ExportSamuraiMarchingCubes, tyro.conf.subcommand(name="samurai-mc")],
+        Annotated[ExportMarchingTetTSDFMesh, tyro.conf.subcommand(name="Marching-tet")],
         Annotated[ExportCameraPoses, tyro.conf.subcommand(name="cameras")],
         Annotated[ExportGaussianSplat, tyro.conf.subcommand(name="gaussian-splat")],
     ]
