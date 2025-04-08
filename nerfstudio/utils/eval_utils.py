@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+import pathlib
 from typing import Callable, Literal, Optional, Tuple
 
 import torch
@@ -86,6 +87,12 @@ def eval_setup(
     Returns:
         Loaded config, pipeline module, corresponding checkpoint, and step
     """
+
+    ## Change file path to windows if running on a Linux machine. This will likely have to change if we start training NeRFs on a Linux machine
+    plt = platform.system()
+    if plt == 'Posix': pathlib.WindowsPath = pathlib.PosixPath
+
+    
     # load save config
     config = yaml.load(config_path.read_text(), Loader=yaml.Loader)
     assert isinstance(config, TrainerConfig)
