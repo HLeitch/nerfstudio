@@ -19,9 +19,10 @@ Evaluation utils
 from __future__ import annotations
 
 import os
+import pathlib as pathlib
+import platform as platform
 import sys
 from pathlib import Path
-import pathlib
 from typing import Callable, Literal, Optional, Tuple
 
 import torch
