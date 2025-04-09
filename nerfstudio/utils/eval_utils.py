@@ -23,7 +23,6 @@ import pathlib as pathlib
 import platform as platform
 import sys
 from pathlib import Path
-import pathlib as pathlib
 from typing import Callable, Literal, Optional, Tuple
 
 import torch
@@ -91,7 +90,7 @@ def eval_setup(
     """
 
     ## Change file path to windows if running on a Linux machine. This will likely have to change if we start training NeRFs on a Linux machine
-    plt = pathlib.platform.system()
+    plt = platform.system()
     if plt == 'Posix': pathlib.WindowsPath = pathlib.PosixPath
 
     
