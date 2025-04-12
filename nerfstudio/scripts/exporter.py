@@ -541,7 +541,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        _, pipeline, _ = eval_setup(self.load_config)
+        _, pipeline, _,_ = eval_setup(self.load_config)
 
         self.validate_pipeline(pipeline)
 
@@ -563,7 +563,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
 
         # Increase the batchsize to speed up the evaluation.
-        pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
+        ##pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
 
         ## Finding density using marching cubes. density_fn used
         densities = density_sampler(
@@ -655,7 +655,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ]
         point_counter = 0
 
-        densest_vals = torch.empty(0,0)
+        densest_vals = torch.empty(0,0,device='GPU0')
 
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
