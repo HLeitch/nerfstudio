@@ -90,8 +90,8 @@ def eval_setup(
     """
 
     ## Change file path to windows if running on a Linux machine. This will likely have to change if we start training NeRFs on a Linux machine
-    plt = platform.system()
-    if plt == 'Posix': pathlib.WindowsPath = pathlib.PosixPath
+    # plt = platform.system()
+    # if plt == 'Posix': pathlib.WindowsPath = pathlib.PosixPath()
 
     
     # load save config
