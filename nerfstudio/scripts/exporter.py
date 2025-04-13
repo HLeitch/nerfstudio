@@ -765,7 +765,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             print(f"Loop Time = {e_time - s_time}")
         ##ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
         densest_vals_np = np.array(densest_vals.cpu())
-        CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals_np)} - {np.max(densest_vals_np)}),{np.mean(densest_vals_np)}")
+        ##CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals_np)} - {np.max(densest_vals_np)}),{np.mean(densest_vals_np)}")
         
         
         print(f"pointCounter = {point_counter}")
