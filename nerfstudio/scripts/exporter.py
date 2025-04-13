@@ -776,9 +776,9 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = refined_normals.reshape((-1,3))
         pointsv3d = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
         normalv3d = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
-        debug_cloud = o3d.geometry.PointCloud(pointsv3d)
-        debug_cloud.colors = normalv3d
-        o3dvis.draw(debug_cloud)
+        # debug_cloud = o3d.geometry.PointCloud(pointsv3d)
+        # debug_cloud.colors = normalv3d
+        # o3dvis.draw(debug_cloud)
 
         # ray_sam = RaySamples(
         #     frustums=Frustums(
