@@ -747,7 +747,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             for d in densest_in_ray.cpu():
 
                 if output_densities[idx, densest_in_ray[idx]] > 0.0:
-                    refined_points.append(spaced_points[idx, d])
+                    refined_points.append(spaced_points[idx, d.cpu()])
                     refined_normals.append(normal_sample[idx])
 
                     point_counter += 1
