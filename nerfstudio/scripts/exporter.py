@@ -771,11 +771,12 @@ class ExportSamuraiMarchingCubes(Exporter):
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
         refined_normals = torch.stack(refined_normals).to(torch_device)
+        print("Torch tensors for points and normals stacked...")
 
         refined_points = refined_points.reshape((-1, 3))
         refined_normals = refined_normals.reshape((-1,3))
-        pointsv3d = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
-        normalv3d = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
+        # pointsv3d = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
+        # normalv3d = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
         # debug_cloud = o3d.geometry.PointCloud(pointsv3d)
         # debug_cloud.colors = normalv3d
         # o3dvis.draw(debug_cloud)
@@ -804,12 +805,14 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
         ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
+        print("Verticies and normals of point cloud assigned to vecotr.")
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
 
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
         ref_pcd.estimate_normals()
         ref_pcd.normalize_normals()
+        print("Complex point cloud normals calculated")
         print(ref_pcd.points)
         print(ref_pcd.normals)
         ref_pcd.colors = pcd.normals
