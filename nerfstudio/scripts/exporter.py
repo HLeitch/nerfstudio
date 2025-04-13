@@ -563,7 +563,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
 
         # Increase the batchsize to speed up the evaluation.
-        pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
+        ##pipeline.datamanager.train_pixel_sampler.num_rays_per_batch = self.num_rays_per_batch
 
         ## Finding density using marching cubes. density_fn used
         densities = density_sampler(
