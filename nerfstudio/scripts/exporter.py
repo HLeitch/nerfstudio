@@ -655,7 +655,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ]
         point_counter = 0
 
-        densest_vals = torch.empty(0,0,device="CUDA:0")
+        densest_vals = torch.empty(0,0,device="cuda")
 
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
@@ -744,7 +744,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             idx = 0
             colouridx = coloursCounter % len(coloursToUse)
-            for d in densest_in_ray:
+            for d in densest_in_ray.cpu():
 
                 if output_densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d])
@@ -764,8 +764,8 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             print(f"Loop Time = {e_time - s_time}")
         ##ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
-        densest_vals_np = np.array(densest_vals)
-        CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals)} - {np.max(densest_vals)}),{np.mean(densest_vals)}")
+        densest_vals_np = np.array(densest_vals.cpu())
+        CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals_np)} - {np.max(densest_vals_np)}),{np.mean(densest_vals_np)}")
         
         
         print(f"pointCounter = {point_counter}")
