@@ -799,7 +799,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         # print(outputs.keys())
         # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
-
+        print(f"densest_vals_np = {densest_vals_np}")
         vertices_to_remove = densest_vals_np < 0.98
         print(vertices_to_remove.__str__())
         refined_points = refined_points[vertices_to_remove!=False]
