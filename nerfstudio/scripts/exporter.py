@@ -800,10 +800,10 @@ class ExportSamuraiMarchingCubes(Exporter):
         # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
 
-        vertices_to_remove = densest_vals < 0.98
-        print(refined_points.__str__)
+        vertices_to_remove = densest_vals_np < 0.98
+        print(vertices_to_remove.__str__())
         refined_points = refined_points[vertices_to_remove!=False]
-        print(refined_points.__str__)
+        print(refined_points.__str__())
 
         quit()
         # print(refined_points)
