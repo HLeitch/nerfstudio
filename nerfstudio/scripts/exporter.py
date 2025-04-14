@@ -737,7 +737,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             ###
             ###Testing densities retrieved from second pass
-            torch.cat((densest_vals,output_densities.max(1)[0].reshape((-1))))              
+            ##torch.cat((densest_vals,output_densities.max(1)[0].reshape((-1))))              
 
             ###
 
@@ -749,7 +749,7 @@ class ExportSamuraiMarchingCubes(Exporter):
                 if output_densities[idx, densest_in_ray[idx]] > 0.0:
                     refined_points.append(spaced_points[idx, d.cpu()])
                     refined_normals.append(normal_sample[idx])
-
+                    torch.cat((densest_vals,d.cpu()))
                     point_counter += 1
 
                 # ##testing. outputs all points sampled for some rays
