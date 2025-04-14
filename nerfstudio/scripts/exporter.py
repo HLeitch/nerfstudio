@@ -815,7 +815,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         print("Complex point cloud normals calculated")
         print(ref_pcd.points)
         print(ref_pcd.normals)
-        ref_pcd.colors = pcd.normals
+        ##ref_pcd.colors = pcd.normals
         ref_pcd.orient_normals_consistent_tangent_plane(100)
 
         ##o3dvis.draw(geometry=(ref_pcd))
