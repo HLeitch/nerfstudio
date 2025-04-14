@@ -800,6 +800,12 @@ class ExportSamuraiMarchingCubes(Exporter):
         # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
 
+        vertices_to_remove = densest_vals < 0.98
+        print(refined_points.__str__)
+        refined_points = refined_points[vertices_to_remove!=False]
+        print(refined_points.__str__)
+
+        quit()
         # print(refined_points)
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
@@ -830,9 +836,13 @@ class ExportSamuraiMarchingCubes(Exporter):
                 CONSOLE.print(f"Densities Range,avg - ({np.min(densities)} - {np.max(densities)}),{np.average(densities)}")
 
                 CONSOLE.print("Computing Mesh... this may take a while.")
+                ##commented out to try a new density mask technique
                 ##mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-                vertices_to_remove = densities < 0.98## np.quantile(densities, p)
-                mesh.remove_vertices_by_mask(vertices_to_remove)
+
+                vertices_to_remove = densest_vals < 0.98## np.quantile(densities, p)
+                ##commented out to try a new density mask technique
+                ##mesh.remove_vertices_by_mask(vertices_to_remove)
+
                 mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
                 print("\033[A\033[A")
                 CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
