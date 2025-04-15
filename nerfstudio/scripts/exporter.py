@@ -655,7 +655,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ]
         point_counter = 0
 
-        densest_vals = torch.empty(0,device="cpu")
+        densest_vals = torch.empty(0,device="cuda")
 
         for position_normal_sample in torch.tensor_split(
             input=pos_and_normals, sections=pos_and_normals.shape[0] // samples_per_batch, dim=0
@@ -737,7 +737,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             ###
             ###Testing densities retrieved from second pass
-            densest_vals = torch.cat((densest_vals,output_densities.max(1)[0].reshape((-1))))              
+            densest_vals = torch.cat((densest_vals.cpu(),output_densities.max(1)[0].reshape((-1))))              
             
             ###
 
