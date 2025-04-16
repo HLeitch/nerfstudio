@@ -737,8 +737,15 @@ class ExportSamuraiMarchingCubes(Exporter):
 
             ###
             ###Testing densities retrieved from second pass
-            print(output_densities)
-            densest_vals = torch.cat((densest_vals,output_densities.max(1)[0].reshape((-1))))              
+            print(f"Dens_fn {density_fn_densities[0]}")
+            print(f"Dens_fn {density_fn_densities.shape}")
+            print(f"output_Dens {output_densities[0]}")
+            print(f"output_Dens {output_densities.shape}")
+            print(f"output_Dens max\n {output_densities.max(1).reshape((-1))}")
+            print(f"output_Dens max\n {output_densities.max(1).reshape((-1)).shape}")
+
+            
+            densest_vals = torch.cat((densest_vals,output_densities.max(1).reshape((-1))))              
             
             ###
 
