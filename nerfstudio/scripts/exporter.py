@@ -829,8 +829,8 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##new assignment
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
-        ref_verts = o3d.utility.Vector3dVector(masked_points.cpu().numpy())
-        ref_norms = o3d.utility.Vector3dVector(masked_normals.cpu().detach().numpy())
+        ref_verts = o3d.utility.Vector3dVector(masked_points.values)
+        ref_norms = o3d.utility.Vector3dVector(masked_normals.values)
         print("Verticies and normals of point cloud assigned to vecotr.")
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
 
