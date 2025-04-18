@@ -811,17 +811,29 @@ class ExportSamuraiMarchingCubes(Exporter):
         vertices_to_remove = densest_vals_np < 0.98
         print(vertices_to_remove.__str__())
         masked_points = torch.masked_select(refined_points,torch.tensor(vertices_to_remove).cuda())
-        ##refined_points = refined_points[vertices_to_remove!=False]
-        print(refined_points.__str__())
+        masked_normals = torch.masked_select(refined_normals,torch.tensor(vertices_to_remove).cuda())
 
-        quit()
-        # print(refined_points)
+        print(f"Masked points shape = {masked_points.shape}")
+        ##refined_points = refined_points[vertices_to_remove!=False]
+        print("Points below denstity threshold cleaned up")
+
+        ##old point assignment
+        # # print(refined_points)
+        # ref_pcd = o3d.geometry.PointCloud()
+        # ##vector must be transposed to create point cloud
+        # ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
+        # ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
+        # print("Verticies and normals of point cloud assigned to vecotr.")
+        # # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
+
+        ##new assignment
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
-        ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
-        ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
+        ref_verts = o3d.utility.Vector3dVector(masked_points.cpu().numpy())
+        ref_norms = o3d.utility.Vector3dVector(masked_normals.cpu().detach().numpy())
         print("Verticies and normals of point cloud assigned to vecotr.")
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
+
 
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
