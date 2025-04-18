@@ -810,7 +810,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         print(f"densest_vals_np = {densest_vals_np}")
         vertices_to_remove = densest_vals_np < 0.98
         print(vertices_to_remove.__str__())
-        masked_points = torch.masked_select(refined_points,torch.tensor(vertices_to_remove).cpu())
+        masked_points = torch.masked_select(refined_points,torch.tensor(vertices_to_remove).cuda())
         ##refined_points = refined_points[vertices_to_remove!=False]
         print(refined_points.__str__())
 
