@@ -783,28 +783,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         refined_points = refined_points.reshape((-1, 3))
         refined_normals = refined_normals.reshape((-1,3))
-        # pointsv3d = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
-        # normalv3d = o3d.utility.Vector3dVector(refined_normals.cpu().numpy())
-        # debug_cloud = o3d.geometry.PointCloud(pointsv3d)
-        # debug_cloud.colors = normalv3d
-        # o3dvis.draw(debug_cloud)
 
-        # ray_sam = RaySamples(
-        #     frustums=Frustums(
-        #         origins=refined_points,
-        #         directions=torch.ones_like(refined_points).to(torch_device),
-        #         starts=torch.zeros_like(refined_points[..., :1]).to(torch_device),
-        #         ends=torch.zeros_like(refined_points[..., :1]).to(torch_device),
-        #         pixel_area=torch.ones_like(refined_points[..., :1]).to(torch_device),
-        #     ),
-        #     camera_indices=torch.zeros_like(refined_points[..., :1]).to(torch_device),
-        # )
-
-        # colours = torch.stack(colours)
-
-        ##pipeline.model.field._sample_locations = refined_points
-        # outputs = pipeline.model.field.forward(ray_sam, compute_normals=True)
-        # print(outputs.keys())
         # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
         print(f"densest_vals_np = {densest_vals_np}")
@@ -813,29 +792,17 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##Remove extra dimension. Allows boolean masking.
         vertices_to_remove = vertices_to_remove.squeeze()
 
-        print(vertices_to_remove.__str__())
-        # masked_points = torch.masked_select(refined_points,torch.tensor(vertices_to_remove).cuda())
-        # masked_normals = torch.masked_select(refined_normals,torch.tensor(vertices_to_remove).cuda())
-
         masked_points = refined_points[torch.tensor(vertices_to_remove).cuda()]
         masked_normals = refined_normals[torch.tensor(vertices_to_remove).cuda()]
         print(f"masked_points {masked_points.shape}")
 
         ##refined_points = refined_points[vertices_to_remove!=False]
         print("Points below denstity threshold cleaned up")
-        ##old point assignment
-        # # print(refined_points)
-        # ref_pcd = o3d.geometry.PointCloud()
-        # ##vector must be transposed to create point cloud
-        # ref_verts = o3d.utility.Vector3dVector(refined_points.cpu().numpy())
-        # ref_norms = o3d.utility.Vector3dVector(refined_normals.cpu().detach().numpy())
-        # print("Verticies and normals of point cloud assigned to vecotr.")
-        # # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
 
         ##new assignment
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
-        ref_verts = o3d.utility.Vector3dVector(masked_points)
+        ref_verts = o3d.utility.Vector3dVector(masked_points.cpu().numpy())
         ref_norms = o3d.utility.Vector3dVector(masked_normals.cpu().detach().numpy())
         print("Verticies and normals of point cloud assigned to vecotr.")
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
@@ -843,15 +810,16 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
-        ref_pcd.estimate_normals()
-        ref_pcd.normalize_normals()
-        print("Complex point cloud normals calculated")
+        # ref_pcd.estimate_normals()
+        # ref_pcd.normalize_normals()
+        # print("Complex point cloud normals calculated")
         print(ref_pcd.points)
         print(ref_pcd.normals)
         ##ref_pcd.colors = pcd.normals
 
       ##experimenting commenting out orientation of normals
-        ##ref_pcd.orient_normals_consistent_tangent_plane(100)
+        print("Reorienting normals")
+        ref_pcd.orient_normals_consistent_tangent_plane(100)
 
         ##o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
