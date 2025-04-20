@@ -794,6 +794,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         masked_points = refined_points[torch.tensor(vertices_to_remove).cuda()]
         masked_normals = refined_normals[torch.tensor(vertices_to_remove).cuda()]
+        masked_densest = densest_vals[torch.tensor(vertices_to_remove).cuda()]
         print(f"masked_points {masked_points.shape}")
 
         ##refined_points = refined_points[vertices_to_remove!=False]
@@ -810,7 +811,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
-        # ref_pcd.estimate_normals()
+        ref_pcd.estimate_normals()
         # ref_pcd.normalize_normals()
         # print("Complex point cloud normals calculated")
         print(ref_pcd.points)
@@ -828,7 +829,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ## Construct mesh using Poisson Surface Reconstruction and removing bottom 98% Density Points
         for x in {8}:#{6,7,8,9}:
             for p in {0.01}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
-                CONSOLE.print(f"Densities Range,avg - ({np.min(densities)} - {np.max(densities)}),{np.average(densities)}")
+                CONSOLE.print(f"Densities Range,avg - ({np.min(masked_densest)} - {np.max(masked_densest)}),{np.average(masked_densest)}")
 
                 CONSOLE.print("Computing Mesh... this may take a while.")
                 ##commented out to try a new density mask technique
