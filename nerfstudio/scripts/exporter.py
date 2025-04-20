@@ -809,20 +809,20 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_normals = refined_normals.reshape((-1, 3))
         print(f"densest_vals_np = {densest_vals_np}")
         vertices_to_remove = densest_vals_np < 0.98
+
+        ##Remove extra dimension. Allows boolean masking.
+        vertices_to_remove = vertices_to_remove.squeeze()
+
         print(vertices_to_remove.__str__())
-        masked_points = torch.masked_select(refined_points,torch.tensor(vertices_to_remove).cuda())
-        masked_normals = torch.masked_select(refined_normals,torch.tensor(vertices_to_remove).cuda())
+        # masked_points = torch.masked_select(refined_points,torch.tensor(vertices_to_remove).cuda())
+        # masked_normals = torch.masked_select(refined_normals,torch.tensor(vertices_to_remove).cuda())
 
-        refined_points_np = np.array(refined_points.cpu(),dtype='float64')
-        masked_points = np.ma.MaskedArray(refined_points_np,vertices_to_remove)
-        print(f"masked_points {masked_points}")
-        print(F"Masked points only valid {masked_points[~masked_points.mask]}")
+        masked_points = refined_points[torch.tensor(vertices_to_remove).cuda()]
+        masked_normals = refined_normals[torch.tensor(vertices_to_remove).cuda()]
+        print(f"masked_points {masked_points.shape}")
 
-
-        print(f"Masked points shape = {masked_points.shape}")
         ##refined_points = refined_points[vertices_to_remove!=False]
         print("Points below denstity threshold cleaned up")
-
         ##old point assignment
         # # print(refined_points)
         # ref_pcd = o3d.geometry.PointCloud()
@@ -874,8 +874,8 @@ class ExportSamuraiMarchingCubes(Exporter):
                 print("\033[A\033[A")
                 CONSOLE.print("[bold green]:white_check_mark: Computing Mesh")
                 
-                ##outputs images of the mesh to tensorboard file
-                render_mesh_to_tb(mesh,self.output_dir.__str__(),tb_file)
+                ##outputs images of the mesh to tensorboard file - commenting out for colab
+                ##render_mesh_to_tb(mesh,self.output_dir.__str__(),tb_file)
 
                 if self.save_mesh:
                     ##Other programs for model veiwing read from 1. Python indexes from 0
