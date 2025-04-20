@@ -829,7 +829,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ## Construct mesh using Poisson Surface Reconstruction and removing bottom 98% Density Points
         for x in {8}:#{6,7,8,9}:
             for p in {0.01}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
-                CONSOLE.print(f"Densities Range,avg - ({np.min(masked_densest)} - {np.max(masked_densest)}),{np.average(masked_densest)}")
+                ##CONSOLE.print(f"Densities Range,avg - ({np.min(masked_densest)} - {np.max(masked_densest)}),{np.average(masked_densest)}")
 
                 CONSOLE.print("Computing Mesh... this may take a while.")
                 ##commented out to try a new density mask technique
