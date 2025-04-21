@@ -752,6 +752,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             densest_vals = torch.cat((densest_vals,torch.max(output_densities,dim=1).values))
             idx = 0
             colouridx = coloursCounter % len(coloursToUse)
+            print(f"Refined points shape = {spaced_points.shape}")
             for d in densest_in_ray.cpu():
 
                 if output_densities[idx, densest_in_ray[idx]] > 0.0:
@@ -812,7 +813,10 @@ class ExportSamuraiMarchingCubes(Exporter):
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
         ref_pcd.estimate_normals()
-        # ref_pcd.normalize_normals()
+        ref_pcd.normalize_normals()
+
+        ref_pcd.remove_statistical_outliers(nb_neighbors=20, std_ratio=2.0)
+        print("Normals Estimated. Statistical outliers removed")
         # print("Complex point cloud normals calculated")
         print(ref_pcd.points)
         print(ref_pcd.normals)
