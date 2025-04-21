@@ -788,7 +788,11 @@ class ExportSamuraiMarchingCubes(Exporter):
         # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
         print(f"densest_vals_np = {densest_vals_np}")
-        vertices_to_remove = densest_vals_np < 0.98
+        vertices_to_remove = densest_vals_np > 0.98
+        print(f"vertices_to_remove = {vertices_to_remove}")
+        print(f"densest_vals_np = {densest_vals_np}")
+
+
 
         ##Remove extra dimension. Allows boolean masking.
         vertices_to_remove = vertices_to_remove.squeeze()
@@ -831,17 +835,13 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_165440/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.013000000000000067 -0.24700000000000005 -0.15000000000000002 --bounding-box-max 0.3430000000000001 0.08299999999999998 0.18000000000000005 --num-samples-mc 250
         ## Construct mesh using Poisson Surface Reconstruction and removing bottom 98% Density Points
-        for x in {8}:#{6,7,8,9}:
+        for x in {6,7,8,9}:
             for p in {0.01}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
                 ##CONSOLE.print(f"Densities Range,avg - ({np.min(masked_densest)} - {np.max(masked_densest)}),{np.average(masked_densest)}")
 
                 CONSOLE.print("Computing Mesh... this may take a while.")
                 ##commented out to try a new density mask technique
                 ##mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
-
-                vertices_to_remove = densest_vals < 0.98## np.quantile(densities, p)
-                ##commented out to try a new density mask technique
-                ##mesh.remove_vertices_by_mask(vertices_to_remove)
 
                 mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ref_pcd, depth=x)
                 print("\033[A\033[A")
@@ -853,7 +853,7 @@ class ExportSamuraiMarchingCubes(Exporter):
                 if self.save_mesh:
                     ##Other programs for model veiwing read from 1. Python indexes from 0
 
-                    path = self.output_dir.__str__() + f"\\{p}%removed_{x}mclevel{self.mc_level}" + self.output_file_name
+                    path = self.output_dir.__str__() + f"//{x}mclevel{self.mc_level}" + self.output_file_name
 
                     o3d.io.write_triangle_mesh(path, mesh, print_progress=True)
 
