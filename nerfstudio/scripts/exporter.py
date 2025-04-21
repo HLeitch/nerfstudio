@@ -637,6 +637,10 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##optimise from SAMURAI later
         refined_points = []
         refined_normals = []
+
+        testRefinedPoints = []
+        testRefinedNormals = []
+        
         colours = []
         counter = 0
         chunk_size = 1000000 ##262144  # 65536 ##2^16
@@ -766,6 +770,20 @@ class ExportSamuraiMarchingCubes(Exporter):
                 #     for p in spaced_points[idx]:
                 #         refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
                 idx += 1
+            
+            testRefinedPoints = testRefinedPoints.append(spaced_points[:,densest_in_ray])
+            testRefinedNormals = testRefinedNormals.append(normal_sample)
+            print(f"testRefinedPoints shape = {testRefinedPoints.shape}")
+            print(f"testRefinedPoints = {testRefinedPoints}")
+            print(f"refined_points shape = {refined_points.shape}")
+            print(f"refined_points = {refined_points}")
+            print(f"testRefinedNormals = {testRefinedNormals}")
+            print(f"testRefinedNormals shape = {testRefinedNormals.shape}")
+            print(f"refined_normals shape = {refined_normals.shape}")
+            print(f"refined_normals = {refined_normals}")
+                  
+            quit()
+                
 
             coloursCounter += 1
             # print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
