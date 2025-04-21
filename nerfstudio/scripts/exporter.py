@@ -775,6 +775,8 @@ class ExportSamuraiMarchingCubes(Exporter):
             print(f"testing spaced points: {spaced_points[:,densest_in_ray.cpu()[0,:]]}")
             testRefinedPoints = testRefinedPoints.append(spaced_points[:,densest_in_ray.cpu()[0,:]])
             testRefinedNormals = testRefinedNormals.append(normal_sample)
+            testRefinedPoints = torch.stack(testRefinedPoints).to(torch_device)
+            testRefinedNormals = torch.stack(testRefinedNormals).to(torch_device)
             print(f"testRefinedPoints shape = {torch.tensor(testRefinedPoints).shape}")
             print(f"testRefinedPoints = {testRefinedPoints}")
             print(f"refined_points shape = {torch.tensor(refined_points).shape}")
