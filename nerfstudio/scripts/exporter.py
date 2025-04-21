@@ -771,15 +771,17 @@ class ExportSamuraiMarchingCubes(Exporter):
                 #         refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
                 idx += 1
             
-            testRefinedPoints = testRefinedPoints.append(spaced_points[:,densest_in_ray.cpu()])
+            print("Testing of new assignment starts")
+            print(f"testing spaced points: {spaced_points[:,densest_in_ray.cpu()[0,:]]}")
+            testRefinedPoints = testRefinedPoints.append(spaced_points[:,densest_in_ray.cpu()[0,:]])
             testRefinedNormals = testRefinedNormals.append(normal_sample)
-            print(f"testRefinedPoints shape = {testRefinedPoints.shape}")
+            print(f"testRefinedPoints shape = {torch.tensor(testRefinedPoints).shape}")
             print(f"testRefinedPoints = {testRefinedPoints}")
-            print(f"refined_points shape = {refined_points.shape}")
+            print(f"refined_points shape = {torch.tensor(refined_points).shape}")
             print(f"refined_points = {refined_points}")
             print(f"testRefinedNormals = {testRefinedNormals}")
-            print(f"testRefinedNormals shape = {testRefinedNormals.shape}")
-            print(f"refined_normals shape = {refined_normals.shape}")
+            print(f"testRefinedNormals shape = {torch.tensor(testRefinedNormals).shape}")
+            print(f"refined_normals shape = {torch.tensor(refined_normals).shape}")
             print(f"refined_normals = {refined_normals}")
                   
             quit()
