@@ -815,7 +815,7 @@ class ExportSamuraiMarchingCubes(Exporter):
         ref_pcd.estimate_normals()
         ref_pcd.normalize_normals()
 
-        ref_pcd.remove_statistical_outliers(nb_neighbors=20, std_ratio=2.0)
+        ref_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
         print("Normals Estimated. Statistical outliers removed")
         # print("Complex point cloud normals calculated")
         print(ref_pcd.points)
