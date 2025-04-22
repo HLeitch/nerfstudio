@@ -774,7 +774,7 @@ class ExportSamuraiMarchingCubes(Exporter):
             print("Testing of new assignment starts")
             ##gives expected result
             print(f"testing spaced points: {spaced_points[:,densest_in_ray.cpu()[0,:]].shape}")
-            testRefinedPoints = testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:]])
+            testRefinedPoints = testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:]].squeeze())
             testRefinedNormals = testRefinedNormals.extend(normal_sample)
             print(f"testRefinedPoints = {testRefinedPoints}")
             print(f"refined_points = {refined_points}")
