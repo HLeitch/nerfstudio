@@ -774,15 +774,22 @@ class ExportSamuraiMarchingCubes(Exporter):
             print("Testing of new assignment starts")
             ##gives expected result
             print(f"testing spaced points: {spaced_points[:,densest_in_ray.cpu()[0,:]].shape}")
-            testRefinedPoints = testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:]].squeeze())
-            testRefinedNormals = testRefinedNormals.extend(normal_sample)
-            print(f"testRefinedPoints = {testRefinedPoints}")
-            print(f"refined_points = {refined_points}")
+            if testRefinedPoints == []:
+              testRefinedPoints = spaced_points[:,densest_in_ray.cpu()[0,:]].squeeze()
+              testRefinedNormals = normal_sample
+            else:
+              testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:]].squeeze())
+              testRefinedNormals.extend(normal_sample)
+
+            print(f"testRefinedPoints = {testRefinedPoints[9]}")
+            print(f"refined_points = {refined_points[9]}")
+            print(f"spaced Points 0 = {spaced_points[9]}")
+            print(f"densest_in_ray = {densest_in_ray[9]}")
             print(f"testRefinedNormals = {testRefinedNormals}")
-            print(f"refined_normals = {refined_normals}")
-                  
+            ##print(f"refined_normals = {refined_normals}")
+
             quit()
-                
+
 
             coloursCounter += 1
             # print(f"after raysample deleted: {torch.cuda.memory_allocated() / torch.cuda.max_memory_allocated()}")
@@ -792,15 +799,23 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
         densest_vals_np = np.array(densest_vals.cpu())
         ##CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals_np)} - {np.max(densest_vals_np)}),{np.mean(densest_vals_np)}")
-        
-        
+
+
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
         refined_normals = torch.stack(refined_normals).to(torch_device)
         print("Torch tensors for points and normals stacked...")
 
+
+
         refined_points = refined_points.reshape((-1, 3))
         refined_normals = refined_normals.reshape((-1,3))
+
+        print(f"testRefinedPoints = {testRefinedPoints}")
+        print(f"refined_points = {refined_points}")
+
+        print(f"testRefinedNormals = {testRefinedNormals}")
+        print(f"refined_normals = {refined_normals}")
 
         # refined_normals = outputs[FieldHeadNames.NORMALS]
         refined_normals = refined_normals.reshape((-1, 3))
