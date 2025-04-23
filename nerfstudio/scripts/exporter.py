@@ -780,7 +780,11 @@ class ExportSamuraiMarchingCubes(Exporter):
             else:
               testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:]].squeeze())
               testRefinedNormals.extend(normal_sample)
+<<<<<<< HEAD
             print(f"densest_in_ray [:,0] = {densest_in_ray[:,0]}")
+=======
+            print(f"densest_in_ray shape = {densest_in_ray.shape}")
+>>>>>>> origin/Py311_HLNERF_Merge
             print(f"testRefinedPoints = {testRefinedPoints[9]}")
             print(f"refined_points = {refined_points[9]}")
             print(f"spaced Points 0 = {spaced_points[9]}")
