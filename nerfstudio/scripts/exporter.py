@@ -776,10 +776,12 @@ class ExportSamuraiMarchingCubes(Exporter):
             print(f"testing spaced points: {spaced_points[:,densest_in_ray.cpu()[0,:].squeeze()].shape}")
             print(f"testing spaced points: {spaced_points[:,densest_in_ray.cpu()[0,:].squeeze()]}")
             if testRefinedPoints == []:
-              testRefinedPoints = spaced_points[:,densest_in_ray.cpu()[:,0].squeeze(),:]
+              testRefinedPoints = spaced_points[:,densest_in_ray.cpu()[0,:].squeeze()]
+              print("testRefinedPoints assigned to tensor")
               testRefinedNormals = normal_sample
+              print("TestRefinedNormals assigned")
             else:
-              testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[:,0].squeeze(),:])
+              testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:].squeeze(),:])
               testRefinedNormals.extend(normal_sample)
             print(f"densest_in_ray [:,0] = {densest_in_ray.cpu()[:,0]}")
             print(f"testRefinedPoints = {testRefinedPoints[9]}")
