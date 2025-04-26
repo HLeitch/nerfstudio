@@ -757,19 +757,19 @@ class ExportSamuraiMarchingCubes(Exporter):
             idx = 0
             colouridx = coloursCounter % len(coloursToUse)
             print(f"Refined points shape = {spaced_points.shape}")
-            for d in densest_in_ray.cpu():
+            # for d in densest_in_ray.cpu():
 
-                if output_densities[idx, densest_in_ray[idx]] > 0.0:
-                    refined_points.append(spaced_points[idx, d.cpu()])
-                    refined_normals.append(normal_sample[idx])
+            #     if output_densities[idx, densest_in_ray[idx]] > 0.0:
+            #         refined_points.append(spaced_points[idx, d.cpu()])
+            #         refined_normals.append(normal_sample[idx])
 
-                    point_counter += 1
+            #         point_counter += 1
 
-                # ##testing. outputs all points sampled for some rays
-                # if idx % 1000 == 0:
-                #     for p in spaced_points[idx]:
-                #         refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
-                idx += 1
+            #     # ##testing. outputs all points sampled for some rays
+            #     # if idx % 1000 == 0:
+            #     #     for p in spaced_points[idx]:
+            #     #         refined_points.append(torch.tensor([[p[0], p[1], p[2]]]))
+            #     idx += 1
             
             print("Testing of new assignment starts")
             ##gives expected result
@@ -783,14 +783,12 @@ class ExportSamuraiMarchingCubes(Exporter):
             else:
               testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:].squeeze()])
               testRefinedNormals.extend(normal_sample)
-            print(f"densest_in_ray [:,0] = {densest_in_ray.cpu()[:,0]}")
-            print(f"testRefinedPoints = {testRefinedPoints[0]}")
-            print(f"refined_points = {refined_points[0]}")
-            print(f"spaced Points 0 = {spaced_points[0]}")
-            print(f"testRefinedNormals = {testRefinedNormals}")
+            # print(f"densest_in_ray [:,0] = {densest_in_ray.cpu()[:,0]}")
+            # print(f"testRefinedPoints = {testRefinedPoints[0]}")
+            # print(f"refined_points = {refined_points[0]}")
+            # print(f"spaced Points 0 = {spaced_points[0]}")
+            # print(f"testRefinedNormals = {testRefinedNormals}")
             ##print(f"refined_normals = {refined_normals}")
-
-            quit()
 
 
             coloursCounter += 1
@@ -801,7 +799,9 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##ray_comp_histogram = display_histogram_of_densities(np.array(densest_vals),self.output_dir,f"DenseMax_refined_{self.output_file_name[0:-4]}")
         densest_vals_np = np.array(densest_vals.cpu())
         ##CONSOLE.print(f"Densities B After loop Range,avg - ({np.min(densest_vals_np)} - {np.max(densest_vals_np)}),{np.mean(densest_vals_np)}")
-
+        refined_points = testRefinedPoints
+        refined_normals = testRefinedNormals
+        
 
         print(f"pointCounter = {point_counter}")
         refined_points = torch.stack(refined_points).to(torch_device)
