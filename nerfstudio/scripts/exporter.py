@@ -781,8 +781,8 @@ class ExportSamuraiMarchingCubes(Exporter):
               testRefinedNormals = normal_sample
               print("TestRefinedNormals assigned")
             else:
-              testRefinedPoints.extend(spaced_points[:,densest_in_ray.cpu()[0,:].squeeze()])
-              testRefinedNormals.extend(normal_sample)
+              testRefinedPoints = torch.cat((testRefinedPoints, spaced_points[:, densest_in_ray.cpu()[0, :].squeeze()]), dim=0)
+              testRefinedNormals = torch.cat((testRefinedNormals, normal_sample), dim=0)
             # print(f"densest_in_ray [:,0] = {densest_in_ray.cpu()[:,0]}")
             # print(f"testRefinedPoints = {testRefinedPoints[0]}")
             # print(f"refined_points = {refined_points[0]}")
