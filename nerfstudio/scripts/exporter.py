@@ -802,7 +802,6 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_points = testRefinedPoints
         refined_normals = testRefinedNormals
 
-
         print(f"pointCounter = {point_counter}")
         ##old statking of tensors
         # refined_points = torch.stack(refined_points).to(torch_device)
@@ -832,9 +831,9 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##Remove extra dimension. Allows boolean masking.
         vertices_to_remove = vertices_to_remove.squeeze()
 
-        masked_points = refined_points[torch.tensor(vertices_to_remove).cuda()]
-        masked_normals = refined_normals[torch.tensor(vertices_to_remove).cuda()]
-        masked_densest = densest_vals[torch.tensor(vertices_to_remove).cuda()]
+        masked_points = refined_points[torch.tensor(vertices_to_remove).cpu()]
+        masked_normals = refined_normals[torch.tensor(vertices_to_remove).cpu()]
+        masked_densest = densest_vals[torch.tensor(vertices_to_remove).cpu()]
         print(f"masked_points {masked_points.shape}")
 
         ##refined_points = refined_points[vertices_to_remove!=False]
