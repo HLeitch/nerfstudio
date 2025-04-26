@@ -860,9 +860,10 @@ class ExportSamuraiMarchingCubes(Exporter):
         print(ref_pcd.normals)
         ##ref_pcd.colors = pcd.normals
 
-      ##experimenting commenting out orientation of normals
+      ##experimenting commenting out orientation of normals. 
+      ##later comment. This takes a so long to run. I think it would best to leave it out. It also consumes memory like pringles.
         print("Reorienting normals")
-        ref_pcd.orient_normals_consistent_tangent_plane(100)
+        ##ref_pcd.orient_normals_consistent_tangent_plane(100)
 
         ##o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
