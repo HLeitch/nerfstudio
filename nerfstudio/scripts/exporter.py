@@ -802,7 +802,6 @@ class ExportSamuraiMarchingCubes(Exporter):
         refined_points = testRefinedPoints
         refined_normals = testRefinedNormals
 
-
         print(f"pointCounter = {point_counter}")
         ##old statking of tensors
         # refined_points = torch.stack(refined_points).to(torch_device)
