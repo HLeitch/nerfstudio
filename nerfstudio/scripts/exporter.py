@@ -843,17 +843,17 @@ class ExportSamuraiMarchingCubes(Exporter):
         ref_pcd = o3d.geometry.PointCloud()
         ##vector must be transposed to create point cloud
         ref_verts = o3d.utility.Vector3dVector(masked_points.cpu().numpy())
-        ref_norms = o3d.utility.Vector3dVector(masked_normals.cpu().detach().numpy())
+        ##ref_norms = o3d.utility.Vector3dVector(masked_normals.cpu().detach().numpy())
         print("Verticies and normals of point cloud assigned to vecotr.")
         # ref_colours = o3d.utility.Vecto0r3dVector(colours.cpu().numpy())
-
+        ref_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
         ref_pcd.estimate_normals()
         ##ref_pcd.normalize_normals()
 
-        ref_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+
         print("Normals Estimated. Statistical outliers removed")
         # print("Complex point cloud normals calculated")
         print(ref_pcd.points)
@@ -870,7 +870,7 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         ##ns-export samurai-mc --load-config outputs\test-sphere\nerfacto\2023-04-04_165440/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min 0.013000000000000067 -0.24700000000000005 -0.15000000000000002 --bounding-box-max 0.3430000000000001 0.08299999999999998 0.18000000000000005 --num-samples-mc 250
         ## Construct mesh using Poisson Surface Reconstruction and removing bottom 98% Density Points
-        for x in {6,7,8,9}:
+        for x in {6,7,8}:
             for p in {0.01}:#{0.03,0.05,0.1,0.15,0.2,0.25,0.3}:
                 ##CONSOLE.print(f"Densities Range,avg - ({np.min(masked_densest)} - {np.max(masked_densest)}),{np.average(masked_densest)}")
 
