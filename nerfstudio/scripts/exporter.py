@@ -850,7 +850,9 @@ class ExportSamuraiMarchingCubes(Exporter):
 
         ref_pcd.points = ref_verts
         ##ref_pcd.normals = ref_norms
-        ref_pcd.estimate_normals()
+
+        ###values for argument taken from https://stackoverflow.com/questions/78548028/how-to-change-orientation-of-normals-in-open3d
+        ref_pcd.estimate_normals(12,None)
         ##ref_pcd.normalize_normals()
 
 
@@ -863,7 +865,8 @@ class ExportSamuraiMarchingCubes(Exporter):
       ##experimenting commenting out orientation of normals. 
       ##later comment. This takes a so long to run. I think it would best to leave it out. It also consumes memory like pringles.
         print("Reorienting normals")
-        ref_pcd.orient_normals_consistent_tangent_plane(100)
+        ###(k=12, lambda=10.0, cos = 0.5)
+        ref_pcd.orient_normals_consistent_tangent_plane(12, 10.0, 0.5)
 
         ##o3dvis.draw(geometry=(ref_pcd))
         # ns-export samurai-mc --load-config outputs\data\tandt\ignatius\nerfacto\2023-03-21_171009/config.yml --output-dir exports/samurai/ --use-bounding-box True --bounding-box-min -0.2 -0.2 -0.25 --bounding-box-max 0.2 0.2 0.25 --num-samples-mc 100
