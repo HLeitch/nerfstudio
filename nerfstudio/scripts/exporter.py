@@ -852,11 +852,10 @@ class ExportSamuraiMarchingCubes(Exporter):
         ##ref_pcd.normals = ref_norms
 
         ###values for argument taken from https://stackoverflow.com/questions/78548028/how-to-change-orientation-of-normals-in-open3d
-        ref_pcd.estimate_normals(12,None)
+        if(ref_pcd.estimate_normals(12)):
+            print("Normals Estimated. Statistical outliers removed")
         ##ref_pcd.normalize_normals()
 
-
-        print("Normals Estimated. Statistical outliers removed")
         # print("Complex point cloud normals calculated")
         print(ref_pcd.points)
         print(ref_pcd.normals)
